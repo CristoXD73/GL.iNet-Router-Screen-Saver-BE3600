@@ -93,7 +93,9 @@ while :; do
     printf '\n  %sType your router admin password when asked (nothing shows while you type).%s\n\n' "$YE" "$RS"
 
     RC=0
-    # shellcheck disable=SC2086
+    # SC2086: $SSH_OPTS must word-split into separate options.
+    # SC2029: $REMOTE is meant to expand here, on this side, before it is sent.
+    # shellcheck disable=SC2086,SC2029
     tar --format ustar -cf - router setup animations | ssh $SSH_OPTS "root@$ROUTER" "$REMOTE" || RC=$?
 
     # Exit 3: the address answered, but it is not a BE3600 (e.g. your main router).

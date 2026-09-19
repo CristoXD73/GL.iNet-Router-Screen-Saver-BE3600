@@ -7,19 +7,135 @@
 #   be3600-anim status        show what is running
 #   be3600-anim set FILE.bea  validate FILE and make it the active animation
 #   be3600-anim check         validate the active animation and show its length
+#   be3600-anim doctor        check the display, touchscreen, animation and service
 
 SVC="/etc/init.d/be3600-screensaver"
 BEA="/etc/be3600-screen/active.bea"
 CHECK="/usr/bin/be3600-bea-check.lua"
-PIDFILE="/tmp/be3600-screen.pid"
+TOUCH="/usr/bin/be3600-wait-touch.lua"
+LOCKDIR="/tmp/be3600-screen.lock"
 
 usage() {
-    sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
+# True if the supervisor is running: the PID in its lock must be alive AND really
+# be a be3600-screensaver (a stale lock could point at a recycled PID).
 running() {
-    [ -f "$PIDFILE" ] && [ -d "/proc/$(cat "$PIDFILE" 2>/dev/null)" ]
+    P="$(cat "$LOCKDIR/pid" 2>/dev/null)"
+    [ -n "$P" ] &&
+    [ -r "/proc/$P/cmdline" ] &&
+    tr '\0' ' ' < "/proc/$P/cmdline" 2>/dev/null | grep -q 'be3600-screensaver'
+}
+
+count() { ps w | grep -c "$1"; }
+
+doctor() {
+
+    FAILS=0
+    WARNS=0
+    ok()   { printf '  [ ok ] %s\n' "$*"; }
+    warn() { printf '  [warn] %s\n' "$*"; WARNS=$((WARNS+1)); }
+    bad()  { printf '  [FAIL] %s\n' "$*"; FAILS=$((FAILS+1)); }
+    info() { printf '         %s\n' "$*"; }
+
+    echo "be3600-anim doctor"
+
+    echo
+    echo "Router"
+    MODEL="$(cat /tmp/sysinfo/model 2>/dev/null)"
+    ok "model: ${MODEL:-unknown}"
+    ok "firmware: $(cat /etc/glversion 2>/dev/null || echo unknown)   $(uname -r)"
+
+    echo
+    echo "Display"
+    FB="/sys/class/graphics/fb0"
+    if [ ! -e /dev/fb0 ]; then
+        bad "/dev/fb0 does not exist"
+    else
+        NAME="$(cat "$FB/name" 2>/dev/null)"
+        VSIZE="$(cat "$FB/virtual_size" 2>/dev/null)"
+        BPP="$(cat "$FB/bits_per_pixel" 2>/dev/null)"
+        STRIDE="$(cat "$FB/stride" 2>/dev/null)"
+        MODES="$(cat "$FB/modes" 2>/dev/null | head -n 1)"
+        info "driver $NAME, virtual $VSIZE, ${BPP}bpp, stride $STRIDE, mode $MODES"
+        if [ "$VSIZE" = "76,284" ] && [ "$BPP" = "16" ] && [ "$STRIDE" = "152" ]; then
+            ok "layout matches the .bea frame format (76x284, 16bpp, 152-byte stride = 43168 bytes)"
+        else
+            bad "layout is NOT 76x284 / 16bpp / stride 152; the supervisor will leave the stock screen alone"
+        fi
+        VH="${VSIZE#*,}"
+        case "$MODES" in *x"$VH"*) info "virtual height equals visible height: no spare rows, so hardware page-flipping is unavailable (tearing cannot be avoided by flipping)" ;; esac
+    fi
+
+    echo
+    echo "Touchscreen"
+    WHICH="$(lua "$TOUCH" --which 2>&1)"
+    DEV="${WHICH%% *}"
+    if [ -e "$DEV" ]; then
+        N="${DEV##*event}"
+        ok "$WHICH: $(cat "/sys/class/input/event$N/device/name" 2>/dev/null)"
+    else
+        bad "touch device not found ($WHICH)"
+    fi
+
+    echo
+    echo "Lua"
+    ok "$(lua -v 2>&1 | head -n 1)"
+
+    echo
+    echo "Animation"
+    if [ -f "$BEA" ]; then
+        if OUT="$(lua "$CHECK" "$BEA" 2>&1)"; then ok "${OUT#OK }"; else bad "$OUT"; fi
+    else
+        bad "no animation at $BEA"
+    fi
+
+    echo
+    echo "Service"
+    if "$SVC" enabled 2>/dev/null; then ok "enabled at boot"; else warn "not enabled at boot (be3600-anim on)"; fi
+    SUP="$(count '[b]e3600-screensaver')"
+    if running; then
+        if [ "$SUP" -eq 1 ]; then ok "supervisor running, PID $(cat "$LOCKDIR/pid")"; else bad "$SUP supervisor processes (expected exactly 1)"; fi
+    else
+        warn "supervisor is not running"
+    fi
+
+    echo
+    echo "Display owners (exactly one should be drawing)"
+    GL="$(count '[g]l_screen')"
+    PL="$(count '[b]e3600-player')"
+    info "gl_screen processes: $GL   custom player processes: $PL"
+    if [ "$GL" -gt 0 ] && [ "$PL" -gt 0 ]; then
+        bad "BOTH the stock screen and the animation are running (should never overlap); run: be3600-anim off && be3600-anim on"
+    elif [ "$GL" -eq 0 ] && [ "$PL" -eq 0 ]; then
+        warn "nothing is drawing to the display right now (fine for a second during a hand-over)"
+    elif [ "$PL" -gt 0 ]; then
+        ok "the animation owns the display"
+    else
+        ok "the stock GL.iNet screen owns the display"
+    fi
+
+    echo
+    echo "Storage"
+    for D in /overlay /tmp; do
+        LINE="$(df -h "$D" 2>/dev/null | tail -n 1)"
+        [ -n "$LINE" ] && info "$D: $(echo "$LINE" | awk '{print $4 " free of " $2 " (" $5 " used)"}')"
+    done
+
+    echo
+    echo "Recent log"
+    LOG="$(logread 2>/dev/null | grep 'be3600-screen' | grep -v 'daemon.info' | tail -n 6)"
+    if [ -n "$LOG" ]; then echo "$LOG" | sed 's/^/         /'; else info "(nothing logged since boot)"; fi
+
+    echo
+    if [ "$FAILS" -gt 0 ]; then
+        echo "Result: $FAILS problem(s), $WARNS warning(s)."
+        return 1
+    fi
+    echo "Result: all good ($WARNS warning(s))."
+    return 0
 }
 
 case "$1" in
@@ -40,8 +156,8 @@ off)
 
 status)
     if "$SVC" enabled; then echo "boot:       enabled"; else echo "boot:       disabled"; fi
-    if running; then echo "supervisor: running (PID $(cat "$PIDFILE"))"; else echo "supervisor: not running"; fi
-    if ps w | grep -q '[b]e3600-player.lua'; then
+    if running; then echo "supervisor: running (PID $(cat "$LOCKDIR/pid"))"; else echo "supervisor: not running"; fi
+    if ps w | grep -q '[b]e3600-player'; then
         echo "display:    custom animation"
     elif ps w | grep -q '[g]l_screen'; then
         echo "display:    GL.iNet stock screen"
@@ -66,6 +182,10 @@ set)
 
 check)
     lua "$CHECK" "$BEA"
+    ;;
+
+doctor)
+    doctor
     ;;
 
 *)

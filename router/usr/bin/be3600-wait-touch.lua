@@ -3,12 +3,52 @@
 -- be3600-wait-touch.lua -- blocks until a finger touches the screen.
 -- Exit codes: 0 = finger down, 2 = the touch device could not be read.
 --
--- The touch controller is a Hynitron CST816X on /dev/input/event0. It reports
--- ABS_X / ABS_Y coordinates, ABS_MT_TRACKING_ID (0 while a finger is down,
--- -1 when it lifts) and SYN_REPORT. It does not send BTN_TOUCH, but that and
--- BTN_TOOL_FINGER are accepted too in case a firmware update changes that.
+--   be3600-wait-touch.lua            wait for a touch
+--   be3600-wait-touch.lua --which    print the touch device it would use, then exit
+--
+-- Which device: TOUCH_DEVICE (from /etc/be3600-screen/config) if set; otherwise
+-- the first /sys/class/input/eventN whose name contains "touch" (on the BE3600
+-- that is "Hynitron CST816X Touchscreen"); otherwise /dev/input/event0.
+--
+-- The touch controller is a Hynitron CST816X. It reports ABS_X / ABS_Y
+-- coordinates, ABS_MT_TRACKING_ID (0 while a finger is down, -1 when it lifts)
+-- and SYN_REPORT. It does not send BTN_TOUCH, but that and BTN_TOOL_FINGER are
+-- accepted too in case a firmware update changes that.
 
-local DEVICE = "/dev/input/event0"
+local function detect_device()
+
+    local override = os.getenv("TOUCH_DEVICE")
+
+    if override and override ~= "" then
+        return override, "TOUCH_DEVICE"
+    end
+
+    -- BE3600_SYS_INPUT is a test hook: a fake /sys/class/input tree.
+    local sys = os.getenv("BE3600_SYS_INPUT") or "/sys/class/input"
+
+    for n = 0, 31 do
+        local f = io.open(string.format("%s/event%d/device/name", sys, n), "r")
+
+        if f then
+            local name = f:read("*l") or ""
+            f:close()
+
+            if name:lower():find("touch", 1, true) then
+                return string.format("/dev/input/event%d", n), name
+            end
+        end
+    end
+
+    return "/dev/input/event0", "default"
+end
+
+local DEVICE, WHY = detect_device()
+
+if arg and arg[1] == "--which" then
+    print(DEVICE .. " (" .. WHY .. ")")
+    os.exit(0)
+end
+
 
 local function u16(s,p)
     local a,b = s:byte(p,p+1)
