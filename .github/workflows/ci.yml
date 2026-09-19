@@ -25,6 +25,9 @@ jobs:
           sh native/build.sh
           file router/usr/bin/be3600-player | tee /dev/stderr | grep -q 'ARM aarch64'
           file router/usr/bin/be3600-player | grep -q 'statically linked'
+          # That was only a build check. Put the committed binary back: the single-file
+          # downloads carry it, and the tests verify they match what is committed.
+          git checkout -- router/usr/bin/be3600-player
 
       - name: Lua syntax
         run: |
