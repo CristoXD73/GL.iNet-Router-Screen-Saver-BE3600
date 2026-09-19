@@ -61,7 +61,10 @@ check_bea() {
     REC="$(od -An -tu2 -j6 -N2 "$F" | tr -d ' ')"
     FB="$(od -An -tu4 -j8 -N4 "$F" | tr -d ' ')"
     [ "$FB" -eq "$FRAME_BYTES" ] || { echo "Its frames are $FB bytes; this display needs $FRAME_BYTES (76 x 284 pixels)."; return 1; }
-    [ "$FPS" -ge 1 ] && [ "$FPS" -le 24 ] || { echo "Its speed is $FPS fps; it must be 1 to 24."; return 1; }
+    if [ "$FPS" -lt 1 ] || [ "$FPS" -gt 24 ]; then
+        echo "Its speed is $FPS fps; it must be 1 to 24."
+        return 1
+    fi
     EXPECTED=$((12 + REC * (2 + FB)))
     [ "$SIZE" -eq "$EXPECTED" ] || { echo "Its size is $SIZE bytes but its header says $EXPECTED. It may be incomplete."; return 1; }
     echo "$REC frames, $FPS fps"
