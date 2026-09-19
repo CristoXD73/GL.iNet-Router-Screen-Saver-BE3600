@@ -152,6 +152,28 @@ BE3600_FB="$TMP/fb2" BE3600_LOOPS=1 "$LUA" router/usr/bin/be3600-player.lua "$TM
 if cmp -s "$TMP/fb1" "$TMP/fb2" && [ -s "$TMP/fb1" ]; then pass "player shows the same final picture from BEA1 and BEA2"; else fail "BEA2 playback differs from BEA1"; fi
 
 
+echo "== native player (same source, built for this computer) =="
+if command -v cc >/dev/null 2>&1; then
+    if cc -O2 -Wall -Wextra -Werror -o "$TMP/player-native" native/be3600-player.c 2>"$TMP/cc.log"; then
+        pass "compiles with no warnings"
+        : > "$TMP/fb3"; : > "$TMP/fb4"
+        BE3600_FB="$TMP/fb3" BE3600_LOOPS=1 "$TMP/player-native" "$TMP/motion.bea"  >/dev/null 2>&1
+        BE3600_FB="$TMP/fb4" BE3600_LOOPS=1 "$TMP/player-native" "$TMP/motion2.bea" >/dev/null 2>&1
+        if cmp -s "$TMP/fb1" "$TMP/fb3"; then pass "BEA1: same picture as the Lua player"; else fail "native BEA1 output differs from Lua"; fi
+        if cmp -s "$TMP/fb2" "$TMP/fb4"; then pass "BEA2: same picture as the Lua player"; else fail "native BEA2 output differs from Lua"; fi
+        for f in "$TMP"/bad_*.bea "$TMP"/bad2_*.bea; do
+            n="$(basename "$f" .bea)"
+            if BE3600_FB="$TMP/fb_bad" BE3600_LOOPS=1 "$TMP/player-native" "$f" >/dev/null 2>&1; then fail "native player accepted $n"; else pass "native player rejects $n"; fi
+        done
+        if "$TMP/player-native" --version >/dev/null 2>&1; then pass "--version works"; else fail "--version failed"; fi
+    else
+        fail "native player does not compile cleanly: $(cat "$TMP/cc.log")"
+    fi
+else
+    echo "  skip  no C compiler found"
+fi
+
+
 echo "== the bundled animation =="
 gunzip -c animations/default.bea.gz > "$TMP/default.bea"
 if "$LUA" "$CHECK" "$TMP/default.bea" >/dev/null 2>&1; then pass "default.bea.gz unpacks to a valid animation"; else fail "the bundled animation is invalid"; fi

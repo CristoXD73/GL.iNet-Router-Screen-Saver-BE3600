@@ -11,14 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Lua 5.1 and ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y lua5.1 shellcheck
+      - name: Install Lua 5.1, ShellCheck and the aarch64 cross compiler
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 shellcheck gcc-aarch64-linux-gnu file
 
       - name: ShellCheck
         run: >
-          shellcheck install.sh set-animation.sh setup/*.sh
+          shellcheck install.sh set-animation.sh setup/*.sh native/build.sh tests/run.sh
           router/usr/bin/be3600-screensaver router/usr/sbin/be3600-anim
           router/etc/init.d/be3600-screensaver
+
+      - name: Cross-compile the native player for the router (static aarch64)
+        run: |
+          sh native/build.sh
+          file router/usr/bin/be3600-player | tee /dev/stderr | grep -q 'ARM aarch64'
+          file router/usr/bin/be3600-player | grep -q 'statically linked'
 
       - name: Lua syntax
         run: |

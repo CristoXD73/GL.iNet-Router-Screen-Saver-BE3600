@@ -11,3 +11,8 @@ IDLE_SECONDS=10
 # whose name contains "touch"); set it only if autodetection picks the wrong one,
 # e.g. TOUCH_DEVICE="/dev/input/event1".
 TOUCH_DEVICE=""
+
+# Which player draws the animation. "auto" uses the native one (exact timing,
+# almost no CPU) when it is installed and falls back to the Lua one; "lua"
+# forces the Lua player, for example to compare the two.
+PLAYER_ENGINE="auto"

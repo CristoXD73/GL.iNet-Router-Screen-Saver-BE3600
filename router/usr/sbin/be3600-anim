@@ -93,8 +93,17 @@ doctor() {
     fi
 
     echo
-    echo "Lua"
-    ok "$(lua -v 2>&1 | head -n 1)"
+    echo "Player"
+    ok "$(lua -v 2>&1 | head -n 1) (fallback player)"
+    if [ -x /usr/bin/be3600-player ]; then
+        if V="$(/usr/bin/be3600-player --version 2>&1)"; then
+            ok "native player: $V"
+        else
+            bad "the native player is installed but does not run: $V"
+        fi
+    else
+        info "native player: not installed (the Lua player is used)"
+    fi
 
     echo
     echo "Animation"
@@ -195,7 +204,11 @@ preview() {
     /bin/usleep 300000
     echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
 
-    lua /usr/bin/be3600-player.lua "$FILE" >/tmp/be3600-preview.log 2>&1 &
+    if [ -x /usr/bin/be3600-player ]; then
+        /usr/bin/be3600-player "$FILE" >/tmp/be3600-preview.log 2>&1 &
+    else
+        lua /usr/bin/be3600-player.lua "$FILE" >/tmp/be3600-preview.log 2>&1 &
+    fi
     PREVIEW_PID=$!
     lua "$TOUCH" >/dev/null 2>&1 &
     TOUCH_PID=$!
