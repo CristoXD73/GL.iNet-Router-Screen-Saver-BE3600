@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" role="img" aria-labelledby="t d">
+  <title id="t">Step 3: make your animation in Motion Studio</title>
+  <desc id="d">Pick Atmosphere, Robot Eyes or GIF, shape it in the preview, then open the compiler and press Compile BE3600 Pack. For a GIF, drop it on the preview and choose Fill, Fit or Stretch.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef0fb"/><stop offset="1" stop-color="#f8f5ff"/></linearGradient>
+    <linearGradient id="strip" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c1a4a"/><stop offset="0.5" stop-color="#4b46b8"/><stop offset="1" stop-color="#241f66"/></linearGradient>
+    <style>
+      .win  { fill: #ffffff; stroke: #dfe2f2; stroke-width: 1.5; }
+      .bar  { fill: #f1f2fa; }
+      .dot  { fill: #d3d6ea; }
+      .h    { fill: #0e1122; font: 700 22px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .n    { fill: #ffffff; font: 700 18px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; text-anchor: middle; }
+      .ch   { fill: #0e1122; font: 700 15px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .p    { fill: #4b516b; font: 400 13.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .s    { fill: #7b8098; font: 400 12px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .b    { fill: #0e1122; font: 700 12.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .bw   { fill: #ffffff; font: 700 12.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .pill { fill: #ffffff; stroke: #dfe2f2; stroke-width: 1.5; }
+      .on   { fill: #0e1122; }
+      .card { fill: #ffffff; stroke: #dfe2f2; stroke-width: 1.5; }
+      .call { fill: #ff8a3d; }
+      .ring { fill: none; stroke: #ff8a3d; stroke-width: 2.5; }
+      .line { stroke: #ff8a3d; stroke-width: 2; fill: none; }
+      .eye  { fill: #ffffff; }
+    </style>
+  </defs>
+  <rect width="900" height="470" rx="22" fill="url(#bg)"/>
+
+  <circle cx="52" cy="46" r="18" fill="#0e1122"/><text class="n" x="52" y="52">3</text>
+  <text class="h" x="80" y="53">Make your animation in Motion Studio</text>
+
+  <!-- Motion Studio -->
+  <g transform="translate(30,90)">
+    <rect class="win" width="560" height="360" rx="16"/>
+    <path d="M0 16a16 16 0 0 1 16-16h528a16 16 0 0 1 16 16v26H0z" class="bar"/>
+    <circle class="dot" cx="24" cy="21" r="5"/><circle class="dot" cx="42" cy="21" r="5"/><circle class="dot" cx="60" cy="21" r="5"/>
+    <text class="s" x="280" y="26" text-anchor="middle">Motion Studio</text>
+
+    <!-- tabs -->
+    <rect class="pill" x="150" y="58" width="260" height="34" rx="17"/>
+    <rect class="on" x="154" y="62" width="92" height="26" rx="13"/>
+    <text class="bw" x="200" y="79" text-anchor="middle">Atmosphere</text>
+    <text class="b" x="292" y="79" text-anchor="middle">Robot Eyes</text>
+    <text class="b" x="372" y="79" text-anchor="middle">GIF</text>
+    <rect class="ring" x="144" y="52" width="272" height="46" rx="23"/>
+
+    <!-- the preview strip -->
+    <rect x="30" y="118" width="500" height="132" rx="20" fill="url(#strip)"/>
+    <rect class="eye" x="190" y="150" width="46" height="68" rx="20"/>
+    <rect class="eye" x="324" y="150" width="46" height="68" rx="20"/>
+    <text class="s" x="46" y="240" fill="#c9ccff" style="fill:#c9ccff">the wide screen, as it will look</text>
+
+    <!-- compiler -->
+    <rect class="card" x="30" y="268" width="500" height="70" rx="14"/>
+    <text class="ch" x="48" y="295">Create your video</text>
+    <text class="s" x="48" y="315">frame rate, loop length, quality (the defaults are good)</text>
+    <rect class="on" x="350" y="286" width="164" height="36" rx="18"/>
+    <text class="bw" x="432" y="309" text-anchor="middle">Compile BE3600 Pack</text>
+    <rect class="ring" x="344" y="280" width="176" height="48" rx="24"/>
+  </g>
+
+  <!-- callouts -->
+  <path class="line" d="M446 168 C 500 168, 520 128, 640 128"/>
+  <path class="line" d="M550 384 C 590 384, 600 322, 640 322"/>
+
+  <g transform="translate(640,96)">
+    <rect class="card" width="230" height="134" rx="14"/>
+    <circle class="call" cx="26" cy="26" r="14"/><text class="n" x="26" y="31" style="font-size:15px">1</text>
+    <text class="ch" x="50" y="31">Pick a look</text>
+    <text class="p" x="16" y="56">Atmosphere: slow colour scenes</text>
+    <text class="p" x="16" y="76">Robot Eyes: pick an expression</text>
+    <text class="p" x="16" y="96">GIF: drop your own GIF on the</text>
+    <text class="p" x="16" y="114">preview; Fill, Fit or Stretch</text>
+  </g>
+  <g transform="translate(640,250)">
+    <rect class="card" width="230" height="140" rx="14"/>
+    <circle class="call" cx="26" cy="26" r="14"/><text class="n" x="26" y="31" style="font-size:15px">2</text>
+    <text class="ch" x="50" y="31">Compile</text>
+    <text class="p" x="16" y="56">Open the Optimizer (bottom)</text>
+    <text class="p" x="16" y="76">and press Compile BE3600 Pack.</text>
+    <text class="p" x="16" y="96">Choose how long the loop is,</text>
+    <text class="p" x="16" y="116">from 1 to 25 seconds.</text>
+  </g>
+  <text class="s" x="640" y="416">Nothing is uploaded anywhere: it all</text>
+  <text class="s" x="640" y="433">happens in your browser.</text>
+</svg>

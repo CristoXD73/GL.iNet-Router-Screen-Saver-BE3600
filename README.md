@@ -51,6 +51,20 @@ After that, **Compile** in Motion Studio sends your animation to the router
 straight away, and the three slots on the page show what's on it. That's it: the
 animation shows up on the screen after a few idle seconds and survives reboots.
 
+### Step by step
+
+<div align="center">
+
+<img src="docs/assets/step1-download.svg" alt="Step 1: press Download Studio Link on the Motion Studio page, then double-click the downloaded file" width="820">
+
+<img src="docs/assets/step2-install.svg" alt="Step 2: type the router password once, press Enter to install the screen saver, press Enter to remember this computer" width="820">
+
+<img src="docs/assets/step3-make.svg" alt="Step 3: pick Atmosphere, Robot Eyes or GIF in Motion Studio and press Compile BE3600 Pack" width="820">
+
+<img src="docs/assets/step4-send.svg" alt="Step 4: the animation is sent to the router, and the three slots show Play and Remove" width="820">
+
+</div>
+
 <details>
 <summary><b>Prefer not to use the website? Install from the ZIP</b></summary>
 
