@@ -1837,7 +1837,7 @@ console.log(
   var slots = $('slots'), getLink = $('getLink');
   if (!square || !panel) return;
 
-  var linkOk = false, loggedIn = false, busy = false, last = null, libLoaded = false, libBusy = false, linkSig = '';
+  var linkOk = false, loggedIn = false, busy = false, last = null, libLoaded = false, libBusy = false, linkSig = '', lib = [], libMax = 3;
 
   function setState(kind, text, helpText) {
     state.textContent = '';
@@ -1869,6 +1869,7 @@ console.log(
   }
 
   function renderSlots(items, max) {
+    lib = items; libMax = max || 3;
     slots.textContent = '';
     var n = Math.max(max || 3, items.length);
     for (var i = 0; i < n; i++) {
@@ -1953,9 +1954,9 @@ console.log(
         linkOk = false; loggedIn = false; libLoaded = false;
         slots.classList.add('hidden');
         setState('bad', 'Studio Link is not running',
-          '1. Download it below.  2. Double-click it (Mac/Linux: run it with python3).  3. Type your router password in ' +
-          'its window when it asks, and leave it open. This page connects by itself. If your browser asks about ' +
-          'devices on your local network, choose Allow.');
+          'Download it below and double-click it (Mac/Linux: run it with python3). The first time it sets up your ' +
+          'router (just press Enter) and asks for the router password once. Then this page connects by itself. If ' +
+          'your browser asks about devices on your local network, choose Allow.');
         getLink.classList.remove('hidden');
       });
   }
@@ -2021,10 +2022,36 @@ console.log(
     takeFile(e.dataTransfer.files[0]);
   });
 
-  // The animation you just compiled can be sent without saving it first.
+  // The animation you just compiled goes straight to the router when Studio Link is
+  // connected (no saving, no dropping). The name comes from what you made, unless you typed one.
+  var engine = 'atmosphere', nameEdited = false;
+  document.addEventListener('be3600-engine', function (e) { engine = e.detail; });
+  nameBox.addEventListener('input', function () { nameEdited = true; });
+
+  function slug(s) { return cleanName(String(s || '').toLowerCase()); }
+  function suggestName() {
+    var t = engine === 'eyes' ? 'eyes-' + slug($('expressionTitle').textContent)
+          : engine === 'gif' ? slug($('gifTitle').textContent.replace(/\.gif$/i, ''))
+          : slug($('sceneTitle').textContent);
+    return t === 'bring-in-a-gif' ? 'my-gif' : t;
+  }
+
   document.addEventListener('be3600-compiled', function () {
     last = window.__be3600LastPack || null;
-    if (last) { row.classList.remove('hidden'); say('', 'Compiled. Name it, then send it, or drop a saved file on the square.'); }
+    if (!last) return;
+    row.classList.remove('hidden');
+    if (!nameEdited) nameBox.value = suggestName();
+    var name = cleanName(nameBox.value);
+    if (linkOk && loggedIn && !busy) {
+      var have = lib.some(function (x) { return x.name === name; });
+      if (libLoaded && !have && lib.length >= libMax) {
+        say('err', 'Compiled, but your router already has ' + libMax + ' animations. Remove one below (or type the name of one to replace), then press Send.');
+        return;
+      }
+      send(last.bytes, name);
+    } else {
+      say('', 'Compiled. Start Studio Link (above) to send it to your router in one click, or press Send once it is connected.');
+    }
   });
   lastBtn.addEventListener('click', function () {
     if (last) send(last.bytes, cleanName(nameBox.value));

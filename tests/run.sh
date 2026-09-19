@@ -383,8 +383,12 @@ mkdir -p "$TMP/solo" && cp studio/downloads/studio-link.py "$TMP/solo/"
 if (cd "$TMP/solo" && python3 -c "
 import importlib.util
 s = importlib.util.spec_from_file_location('solo', 'studio-link.py'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
-assert m.parse_library('*\tdefault\t100\t25.0\nlimits\t3\t25\n')") >/dev/null 2>&1; then
-    pass "studio-link.py download imports and works standalone"
+assert m.parse_library('*\tdefault\t100\t25.0\nlimits\t3\t25\n')
+import tarfile
+path, pid = m.get_payload()
+names = tarfile.open(path, 'r:gz').getnames()
+assert pid != 'dev' and 'setup/router-install.sh' in names and 'router/usr/bin/be3600-player' in names and 'animations/default.bea.gz' in names") >/dev/null 2>&1; then
+    pass "studio-link.py download imports, and carries the router's files inside itself"
 else
     fail "studio-link.py download does not work on its own"
 fi

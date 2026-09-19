@@ -11,6 +11,11 @@ anywhere, never given to the web page) and is handed to ssh through a small help
 program, so nothing asks again.
 
     python3 studio-link.py [--port 8791] [--router 192.168.8.1] [--key FILE] [--dry-run]
+                           [--no-browser] [--forget]
+
+The first time, it also puts the screen saver on your router if it is not there yet (press
+Enter to agree), and offers to remember this computer so you never type the password again
+(--forget undoes that). It then opens Motion Studio in your browser.
 
 Only pages served from the Motion Studio site, a local file, or localhost are accepted.
 To allow another site (for example your own fork's GitHub Pages address) set
@@ -46,6 +51,14 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
 
 STATE_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
                           "be3600-screensaver", "router")
+KEY_FILE = os.path.join(os.path.dirname(STATE_FILE), "studio-key")     # the "remember this computer" key
+KEY_COMMENT = "be3600-studio-link-" + re.sub(r"[^A-Za-z0-9_-]+", "-", socket.gethostname() or "computer")[:30]
+AUTH_KEYS = "/etc/dropbear/authorized_keys"
+STUDIO_URL = os.environ.get("STUDIO_LINK_URL") or "https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/"
+
+# In the single-file download the files the router needs are packed in here as
+# (version id, base64 of a .tar.gz); from a clone of the repo they are packed on the fly.
+PAYLOAD = None  # __PAYLOAD__
 
 
 class Config:
@@ -58,6 +71,7 @@ class Config:
     sent = 0
     lock = threading.Lock()
     found = None
+    pinged = False                                 # has the Motion Studio page found us yet?
 
 
 def origin_allowed(origin):
@@ -249,8 +263,8 @@ def get_library():
         return 502, "Bad Gateway", {"ok": False, "message": "Could not log in to the router. Is the password right?"}
     items, limits = parse_library(out)
     if items is None:
-        return 502, "Bad Gateway", {"ok": False, "message": "The router's software is older than this Studio Link. "
-                                    "Run Install.cmd (or ./install.sh) again to update it."}
+        return 502, "Bad Gateway", {"ok": False, "message": "The screen saver on the router is missing or out of date. "
+                                    "Close Studio Link and start it again; it will offer to update it."}
     return 200, "OK", {"ok": True, "router": ip, "max": limits["max"], "maxSeconds": limits["maxSeconds"], "items": items}
 
 
@@ -390,6 +404,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlsplit(self.path).path
         if path == "/ping":
+            Config.pinged = True
             self._reply(200, "OK", {"ok": True, "app": "be3600-studio-link", "version": 2, "dryRun": Config.dry_run,
                                     "sent": Config.sent, "router": Config.router or Config.found,
                                     "loggedIn": quiet_login()}, cors)
@@ -439,18 +454,32 @@ def make_server(port):
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 
 
+def test_login(ip):
+    """Can we get in without anyone typing (a key, or the password we hold)?"""
+    code, out = run_ssh(ip, "echo studio-ok")
+    return code == 0 and "studio-ok" in out
+
+
 def log_in():
-    """Ask for the router password once and check it. The password stays in memory."""
+    """Get in: the remembered key if there is one, otherwise the password, asked for once
+    (it stays in memory). -> the router's address, or None."""
     ip = find_router()
     if not ip:
         say("!", "Could not find your router. Start Studio Link with --router 192.168.x.x")
-        return
+        return None
     say("ok", "Router found at %s" % ip)
     if Config.key:
         say("ok", "Using your key file; no password needed.")
-        return
+        return ip
+    if os.path.exists(KEY_FILE):
+        Config.key = KEY_FILE
+        if test_login(ip):
+            say("ok", "Logged in (this computer is remembered).")
+            return ip
+        Config.key = None
+        say("!", "The remembered login no longer works (was the router reset?). Please type the password.")
     if not sys.stdin.isatty():
-        return
+        return ip
     Config.askpass = make_askpass()
     for attempt in range(3):
         try:
@@ -460,19 +489,162 @@ def log_in():
         if not pw:
             say("!", "No password held: you will be asked in this window for every send, and Motion Studio "
                      "cannot show your animations.")
-            return
+            return ip
         Config.password = pw
-        code, out = run_ssh(ip, "be3600-anim list --plain")
-        if code == 0 and parse_library(out)[0] is not None:
+        if test_login(ip):
             say("ok", "Logged in.")
-            return
+            return ip
         Config.password = None
-        if code == 0:
-            say("!", "Logged in, but the router's software is older than this Studio Link; run Install.cmd again.")
-            Config.password = pw
-            return
-        say("x", "That did not work (%s)." % (last_line(out) or "no reply"))
+        say("x", "That did not work. Is it your router's admin password?")
     Config.password = None
+    return ip
+
+
+# ---------------------------------------------------------------------------------------
+# Putting the screen saver on the router, and remembering this computer
+# ---------------------------------------------------------------------------------------
+
+def get_payload():
+    """-> (path of a .tar.gz with the router's files, version id), or (None, None)."""
+    fd, tmp = tempfile.mkstemp(suffix=".tar.gz")
+    if PAYLOAD:
+        import base64
+        with os.fdopen(fd, "wb") as f:
+            f.write(base64.b64decode("".join(PAYLOAD[1].split())))
+        return tmp, PAYLOAD[0]
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if not os.path.isdir(os.path.join(root, "router")):
+        os.close(fd)
+        os.unlink(tmp)
+        return None, None
+    import tarfile
+    with os.fdopen(fd, "wb") as f, tarfile.open(fileobj=f, mode="w:gz") as t:
+        for d in ("router", "setup", "animations"):
+            t.add(os.path.join(root, d), arcname=d, filter=lambda i: None if "__pycache__" in i.name else i)
+    return tmp, "dev"
+
+
+def yes_no(question):
+    """Enter or Y = yes, N = no. Never asks when nobody is there to answer."""
+    if os.environ.get("BE3600_ASSUME_YES"):                  # test hook
+        return True
+    if not sys.stdin.isatty():
+        return False
+    try:
+        return input("  %s [Enter = yes, N = no] " % question).strip().lower() not in ("n", "no")
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def install_on_router(ip, path, version):
+    say("install", "Putting the screen saver on your router")
+    remote = ("rm -rf /tmp/be3600-setup && mkdir -p /tmp/be3600-setup && cd /tmp/be3600-setup && "
+              "gunzip -c | tar xf - && BE3600_VERSION=%s sh setup/router-install.sh" % version)
+    code, out = run_ssh(ip, remote, stdin_path=path)
+    for line in out.splitlines():
+        if line.strip():
+            print("      " + line.rstrip(), flush=True)
+    if code == 0:
+        say("ok", "The screen saver is installed and running.")
+        return True
+    if code == 3:
+        say("x", "That device is not a GL-BE3600 with a front display (nothing was changed). "
+                 "Start Studio Link with the right address: --router 192.168.x.x")
+    else:
+        say("x", "The install did not finish (see above).")
+    return False
+
+
+def confirm_installed(ip):
+    """Install (or update) the screen saver on the router when it is missing or old."""
+    if Config.dry_run or not quiet_login():
+        return
+    code, out = run_ssh(ip, "cat /etc/be3600-screen/version 2>/dev/null; echo; "
+                            "command -v be3600-anim >/dev/null && echo HAVE-ANIM; "
+                            "be3600-anim list --plain >/dev/null 2>&1 && echo LIST-OK")
+    if code != 0:
+        return
+    have, current = "HAVE-ANIM" in out, "LIST-OK" in out
+    version = next((l.strip() for l in out.splitlines() if l.strip() and l.strip() not in ("HAVE-ANIM", "LIST-OK")), "")
+    path, pid = get_payload()
+    try:
+        if path is None:
+            return
+        if current and (pid == "dev" or version == pid):
+            return                                        # already there and up to date
+        if not have:
+            headline, ask = "This router does not have the screen saver yet.", "Put it on the router now?"
+        elif not current:
+            headline, ask = "The screen saver on this router is an older version.", "Update it now?"
+        else:
+            headline, ask = "A newer version of the screen saver is available.", "Update it now?"
+        print("\n  %s" % headline, flush=True)
+        if yes_no(ask):
+            install_on_router(ip, path, pid)
+        else:
+            say("!", "Skipped. Motion Studio can only show and change animations once it is installed.")
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def offer_remember(ip):
+    """After a password login: offer to keep a key so the password is never asked again."""
+    if Config.dry_run or Config.key or Config.password is None or os.path.exists(KEY_FILE):
+        return
+    print("\n  Remember this computer?\n"
+          "  Studio Link keeps a private key file on this computer, so you never type the\n"
+          "  password again. Anyone using your account on this computer could then reach the\n"
+          "  router. Undo any time:  python3 studio-link.py --forget", flush=True)
+    if not yes_no("Remember it?"):
+        return
+    try:
+        os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", KEY_COMMENT, "-f", KEY_FILE],
+                       check=True, capture_output=True)
+        os.chmod(KEY_FILE, 0o600)
+        with open(KEY_FILE + ".pub", "rb") as f:
+            pub = f.read()
+        pub_tmp = KEY_FILE + ".send"
+        with open(pub_tmp, "wb") as f:
+            f.write(pub)
+        code, out = run_ssh(ip, "mkdir -p /etc/dropbear && touch %s && chmod 600 %s && sed -i '/ %s$/d' %s && cat >> %s"
+                            % (AUTH_KEYS, AUTH_KEYS, KEY_COMMENT, AUTH_KEYS, AUTH_KEYS), stdin_path=pub_tmp)
+        os.unlink(pub_tmp)
+        if code != 0:
+            raise RuntimeError(last_line(out) or "the router refused the key")
+        pw, Config.password = Config.password, None
+        Config.key = KEY_FILE
+        if test_login(ip):
+            say("ok", "Remembered. Next time there is nothing to type.")
+            return
+        Config.key, Config.password = None, pw
+        raise RuntimeError("the router did not accept the key")
+    except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+        say("!", "Could not set that up (%s). Nothing is lost; you will just be asked for the password each time." % e)
+        for p in (KEY_FILE, KEY_FILE + ".pub"):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+def forget(ip):
+    """Take this computer's key off the router and delete it here."""
+    if ip and quiet_login():
+        code, out = run_ssh(ip, "sed -i '/ %s$/d' %s" % (KEY_COMMENT, AUTH_KEYS))
+        if code == 0:
+            say("ok", "This computer's key was removed from the router.")
+        else:
+            say("!", "Could not remove the key from the router (%s)." % (last_line(out) or "no reply"))
+    for p in (KEY_FILE, KEY_FILE + ".pub"):
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+    say("ok", "Forgotten. Studio Link will ask for your password again.")
 
 
 def main():
@@ -481,22 +653,43 @@ def main():
     ap.add_argument("--router")
     ap.add_argument("--key")
     ap.add_argument("--dry-run", action="store_true", help="check files but send nothing (for testing)")
+    ap.add_argument("--no-browser", action="store_true", help="do not open Motion Studio automatically")
+    ap.add_argument("--forget", action="store_true", help="remove the remembered login from the router and this computer")
     a = ap.parse_args()
     Config.router, Config.key, Config.dry_run = a.router, a.key, a.dry_run
+
+    print("\n  GL.iNet Router Screen Saver (BE3600) - Studio Link\n", flush=True)
+
+    if a.forget:
+        forget(log_in())
+        return
 
     try:
         server = make_server(a.port)
     except OSError:
         sys.exit("Could not start listening on port %d (is Studio Link already running?)." % a.port)
 
-    print("\n  GL.iNet Router Screen Saver (BE3600) - Studio Link\n", flush=True)
     if a.dry_run:
         say("!", "DRY RUN: files are checked but nothing is sent.")
     else:
-        log_in()
-    print("\n  Studio Link is running. Leave this window open, then use Motion Studio's drop zone.\n"
+        ip = log_in()
+        if ip and quiet_login():
+            confirm_installed(ip)
+            offer_remember(ip)
+    print("\n  Studio Link is running. Leave this window open.\n"
+          "  Motion Studio connects to it by itself.\n"
           "  Listening on this computer only: 127.0.0.1:%d\n"
           "  Press Ctrl+C to stop.\n" % a.port, flush=True)
+
+    def open_studio():
+        if not Config.pinged:                              # the page is not open yet: open it
+            import webbrowser
+            say("ok", "Opening Motion Studio in your browser")
+            webbrowser.open(STUDIO_URL)
+    if not (a.no_browser or a.dry_run or os.environ.get("BE3600_NO_BROWSER")):
+        t = threading.Timer(6.0, open_studio)
+        t.daemon = True
+        t.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

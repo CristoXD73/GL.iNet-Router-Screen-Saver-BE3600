@@ -11,6 +11,12 @@
 #   -Router  skip auto-detection and use this address
 #   -Key     use this SSH private key instead of the admin password
 #   -DryRun  check files but send nothing (for testing)
+#   -NoBrowser  do not open Motion Studio automatically
+#   -Forget  remove the remembered login from the router and this computer
+#
+# The first time, it also puts the screen saver on your router if it is not there yet
+# (press Enter to agree), and offers to remember this computer so you never type the
+# password again. It then opens Motion Studio in your browser.
 #
 # Only pages served from the Motion Studio site, a local file, or localhost are
 # accepted. To allow another site (for example your own fork's GitHub Pages address),
@@ -20,7 +26,9 @@ param(
     [int]$Port = 8791,
     [string]$Router,
     [string]$Key,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$NoBrowser,
+    [switch]$Forget
 )
 
 . "$PSScriptRoot\lib.ps1"
@@ -36,6 +44,12 @@ $Script:Sent = 0
 $Script:Password = $null
 $Script:AskPassDir = $null
 $Script:AskPassPath = $null
+$Script:Pinged = $false                       # has the Motion Studio page found us yet?
+$Script:KeyPath = Join-Path $Script:StateDir 'studio-key'     # the "remember this computer" key
+$Script:KeyComment = 'be3600-studio-link-' + (($env:COMPUTERNAME -replace '[^A-Za-z0-9_-]', '-'))
+$Script:AuthKeys = '/etc/dropbear/authorized_keys'
+$Script:StudioUrl = 'https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/'
+if ($env:STUDIO_LINK_URL) { $Script:StudioUrl = $env:STUDIO_LINK_URL }
 
 
 # ----------------------------------------------------------------------------
@@ -294,7 +308,7 @@ function Get-Library {
     }
     $lib = ConvertFrom-PlainList $r.Out
     if ($null -eq $lib) {
-        return New-Reply 502 'Bad Gateway' @{ ok = $false; message = "The router's software is older than this Studio Link. Run Install.cmd (or ./install.sh) again to update it." }
+        return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'The screen saver on the router is missing or out of date. Close Studio Link and start it again; it will offer to update it.' }
     }
     return New-Reply 200 'OK' @{ ok = $true; router = $ip; max = $lib.Limits.max; maxSeconds = $lib.Limits.maxSeconds; items = $lib.Items }
 }
@@ -439,6 +453,7 @@ function Handle-Client {
         }
 
         if ($req.Method -eq 'GET' -and $req.Path -eq '/ping') {
+            $Script:Pinged = $true
             $known = $Router
             if (-not $known) { $known = $Script:RouterIp }
             Send-Response $stream 200 'OK' $cors @{ ok = $true; app = 'be3600-studio-link'; version = 2; dryRun = [bool]$DryRun; sent = $Script:Sent; router = $known; loggedIn = (Test-QuietLogin) }
@@ -497,16 +512,33 @@ function Handle-Client {
 # Log in once, then go
 # ----------------------------------------------------------------------------
 
+function Test-Login {
+    # Can we get in without anyone typing (a key, or the password we hold)?
+    param([string]$Ip)
+    $r = Invoke-Ssh -Ip $Ip -Remote 'echo studio-ok'
+    return ($r.Code -eq 0 -and $r.Out -match 'studio-ok')
+}
+
+# Get in: the remembered key if there is one, otherwise the password, asked for once
+# (it stays in memory). -> the router's address, or $null.
 function Start-Login {
     $ip = Get-TargetRouter
     if (-not $ip) {
         Write-Warn 'Could not find your router. Start Studio Link with its address, for example: Studio-Link.cmd -Router 192.168.8.1'
-        return
+        return $null
     }
     Write-Ok "Router found at $ip"
 
-    if ($Key) { Write-Ok 'Using your key file; no password needed.'; return }
-    if ([Console]::IsInputRedirected) { return }
+    if ($Key) { Write-Ok 'Using your key file; no password needed.'; return $ip }
+
+    if (Test-Path -LiteralPath $Script:KeyPath) {
+        $script:Key = $Script:KeyPath
+        if (Test-Login $ip) { Write-Ok 'Logged in (this computer is remembered).'; return $ip }
+        $script:Key = $null
+        Write-Warn 'The remembered login no longer works (was the router reset?). Please type the password.'
+    }
+
+    if ([Console]::IsInputRedirected) { return $ip }
 
     New-AskPass
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
@@ -517,22 +549,171 @@ function Start-Login {
 
         if (-not $pw) {
             Write-Warn 'No password held: you will be asked in this window for every send, and Motion Studio cannot show your animations.'
-            return
+            return $ip
         }
 
         $Script:Password = $pw
         Set-PasswordEnv $pw
-        $r = Invoke-Ssh -Ip $ip -Remote 'be3600-anim list --plain'
-        if ($r.Code -eq 0 -and $null -ne (ConvertFrom-PlainList $r.Out)) { Write-Ok 'Logged in.'; return }
-        if ($r.Code -eq 0) { Write-Warn "Logged in, but the router's software is older than this Studio Link; run Install.cmd again."; return }
+        if (Test-Login $ip) { Write-Ok 'Logged in.'; return $ip }
 
         $Script:Password = $null
         Clear-PasswordEnv
         New-AskPass
-        $why = Get-LastLine $r.Out
-        if (-not $why) { $why = 'no reply' }
-        Write-Bad "That did not work ($why)."
+        Write-Bad 'That did not work. Is it your router''s admin password?'
     }
+    return $ip
+}
+
+
+# ----------------------------------------------------------------------------
+# Putting the screen saver on the router, and remembering this computer
+# ----------------------------------------------------------------------------
+
+# The files the router needs, as a .tar.gz in the temp folder -> @{ Path; Id }, or $null.
+# The single-file download carries them inside itself (after a marker line); from a clone
+# of the repo they are packed on the fly.
+function Get-Payload {
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('be3600-setup-' + [guid]::NewGuid().ToString('N') + '.tar.gz')
+
+    $self = $env:SELF
+    if ($self -and (Test-Path -LiteralPath $self)) {
+        $text = [System.IO.File]::ReadAllText($self)
+        $i = $text.LastIndexOf('#' + '#PAYLOAD#' + '# ')
+        if ($i -ge 0) {
+            $lines = $text.Substring($i) -split "`r?`n"
+            $id = ($lines[0] -split ' ')[1]
+            $b64 = (($lines | Select-Object -Skip 1) -join '') -replace '\s', ''
+            [System.IO.File]::WriteAllBytes($tmp, [Convert]::FromBase64String($b64))
+            return @{ Path = $tmp; Id = $id }
+        }
+    }
+
+    $root = Split-Path -Parent $PSScriptRoot
+    $tar = Get-Exe 'tar.exe'
+    if ($tar -and (Test-Path -LiteralPath (Join-Path $root 'router'))) {
+        & $tar -czf $tmp -C $root router setup animations
+        if ($LASTEXITCODE -eq 0) { return @{ Path = $tmp; Id = 'dev' } }
+    }
+    return $null
+}
+
+function Read-YesNo {
+    # Enter or Y = yes, N = no. Never asks when nobody is there to answer.
+    param([string]$Question)
+    if ($env:BE3600_ASSUME_YES) { return $true }             # test hook
+    if ([Console]::IsInputRedirected) { return $false }
+    $a = (Read-Host "  $Question [Enter = yes, N = no]").Trim()
+    return ($a -notmatch '^(n|no)$')
+}
+
+function Install-OnRouter {
+    param([string]$Ip, $Payload)
+    Write-Step 'install' 'Putting the screen saver on your router'
+    $remote = "rm -rf /tmp/be3600-setup && mkdir -p /tmp/be3600-setup && cd /tmp/be3600-setup && gunzip -c | tar xf - && BE3600_VERSION=$($Payload.Id) sh setup/router-install.sh"
+    $r = Invoke-Ssh -Ip $Ip -Remote $remote -InputFile $Payload.Path
+    foreach ($l in ($r.Out -split "`r?`n")) { if ($l.Trim()) { Write-Info $l.TrimEnd() } }
+    if ($r.Code -eq 0) { Write-Ok 'The screen saver is installed and running.'; return }
+    if ($r.Code -eq 3) {
+        Write-Bad 'That device is not a GL-BE3600 with a front display (nothing was changed). Start Studio Link with the right address: Studio-Link.cmd -Router 192.168.x.x'
+    } else {
+        Write-Bad 'The install did not finish (see above).'
+    }
+}
+
+# Install (or update) the screen saver on the router when it is missing or old.
+function Confirm-Installed {
+    param([string]$Ip)
+    $r = Invoke-Ssh -Ip $Ip -Remote 'cat /etc/be3600-screen/version 2>/dev/null; echo; command -v be3600-anim >/dev/null && echo HAVE-ANIM; be3600-anim list --plain >/dev/null 2>&1 && echo LIST-OK'
+    if ($r.Code -ne 0) { return }
+    $have = ($r.Out -match 'HAVE-ANIM')
+    $current = ($r.Out -match 'LIST-OK')
+    $version = ''
+    foreach ($l in ($r.Out -split "`r?`n")) {
+        $t = $l.Trim()
+        if ($t -and $t -ne 'HAVE-ANIM' -and $t -ne 'LIST-OK') { $version = $t; break }
+    }
+
+    $payload = Get-Payload
+    if (-not $payload) { return }
+    try {
+        if ($current -and ($payload.Id -eq 'dev' -or $version -eq $payload.Id)) { return }   # already there, up to date
+
+        if (-not $have) { $headline = 'This router does not have the screen saver yet.'; $ask = 'Put it on the router now?' }
+        elseif (-not $current) { $headline = 'The screen saver on this router is an older version.'; $ask = 'Update it now?' }
+        else { $headline = 'A newer version of the screen saver is available.'; $ask = 'Update it now?' }
+
+        Write-Host ''
+        Write-Host "  $headline"
+        if (Read-YesNo $ask) { Install-OnRouter $Ip $payload }
+        else { Write-Warn 'Skipped. Motion Studio can only show and change animations once it is installed.' }
+    }
+    finally {
+        try { [System.IO.File]::Delete($payload.Path) } catch {}
+    }
+}
+
+# After a password login: offer to keep a key so the password is never asked again.
+function Offer-Remember {
+    param([string]$Ip)
+    if ($Key -or ($null -eq $Script:Password) -or (Test-Path -LiteralPath $Script:KeyPath)) { return }
+
+    Write-Host ''
+    Write-Box @(
+        'Remember this computer?',
+        '',
+        'Studio Link keeps a private key file on this computer, so',
+        'you never type the password again. Anyone using your',
+        'Windows account could then reach the router.',
+        'Undo any time:  Studio-Link.cmd -Forget'
+    ) 'Yellow'
+    if (-not (Read-YesNo 'Remember it?')) { return }
+
+    try {
+        $keygen = Get-Exe 'ssh-keygen.exe'
+        if (-not $keygen) { throw 'ssh-keygen.exe was not found' }
+        [void][System.IO.Directory]::CreateDirectory($Script:StateDir)
+        foreach ($p in $Script:KeyPath, ($Script:KeyPath + '.pub')) { if (Test-Path -LiteralPath $p) { [System.IO.File]::Delete($p) } }
+
+        $p = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /s /c `"`"$keygen`" -q -t ed25519 -N `"`" -C $($Script:KeyComment) -f `"$($Script:KeyPath)`"`"" -NoNewWindow -Wait -PassThru
+        if ($p.ExitCode -ne 0 -or -not (Test-Path -LiteralPath ($Script:KeyPath + '.pub'))) { throw 'could not make a key' }
+
+        $af = $Script:AuthKeys
+        $remote = "mkdir -p /etc/dropbear && touch $af && chmod 600 $af && sed -i '/ $($Script:KeyComment)`$/d' $af && cat >> $af"
+        $r = Invoke-Ssh -Ip $Ip -Remote $remote -InputFile ($Script:KeyPath + '.pub')
+        if ($r.Code -ne 0) {
+            $why = Get-LastLine $r.Out
+            if (-not $why) { $why = 'the router refused the key' }
+            throw $why
+        }
+
+        $pw = $Script:Password
+        $Script:Password = $null
+        $script:Key = $Script:KeyPath
+        if (Test-Login $Ip) {
+            Clear-PasswordEnv
+            Write-Ok 'Remembered. Next time there is nothing to type.'
+            return
+        }
+        $script:Key = $null
+        $Script:Password = $pw
+        throw 'the router did not accept the key'
+    }
+    catch {
+        Write-Warn ("Could not set that up ($($_.Exception.Message)). Nothing is lost; you will just be asked for the password each time.")
+        foreach ($p in $Script:KeyPath, ($Script:KeyPath + '.pub')) { try { [System.IO.File]::Delete($p) } catch {} }
+    }
+}
+
+# Take this computer's key off the router and delete it here.
+function Invoke-Forget {
+    param([string]$Ip)
+    if ($Ip -and (Test-QuietLogin)) {
+        $r = Invoke-Ssh -Ip $Ip -Remote "sed -i '/ $($Script:KeyComment)`$/d' $($Script:AuthKeys)"
+        if ($r.Code -eq 0) { Write-Ok 'This computer''s key was removed from the router.' }
+        else { Write-Warn "Could not remove the key from the router ($(Get-LastLine $r.Out))." }
+    }
+    foreach ($p in $Script:KeyPath, ($Script:KeyPath + '.pub')) { try { [System.IO.File]::Delete($p) } catch {} }
+    Write-Ok 'Forgotten. Studio Link will ask for your password again.'
 }
 
 
@@ -541,6 +722,12 @@ function Start-Login {
 # ----------------------------------------------------------------------------
 
 Show-Banner 'GL.iNet Router Screen Saver (BE3600)' 'Studio Link'
+
+if ($Forget) {
+    try { Invoke-Forget (Start-Login) }
+    finally { $Script:Password = $null; Clear-PasswordEnv }
+    exit 0
+}
 
 $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $Port)
 try {
@@ -552,22 +739,41 @@ catch {
 }
 
 try {
-    if ($DryRun) { Write-Warn 'DRY RUN: files are checked but nothing is sent.' } else { Start-Login }
+    if ($DryRun) { Write-Warn 'DRY RUN: files are checked but nothing is sent.' }
+    else {
+        $ip = Start-Login
+        if ($ip -and (Test-QuietLogin)) {
+            Confirm-Installed $ip
+            Offer-Remember $ip
+        }
+    }
 
     Write-Host ''
     Write-Box @(
         'Studio Link is running.',
         '',
-        'Leave this window open, then use Motion Studio''s',
-        'drop zone to send animations to your router.',
+        'Leave this window open.',
+        'Motion Studio connects to it by itself.',
         '',
         ('Listening on this computer only: 127.0.0.1:{0}' -f $Port),
         'Press Ctrl+C to stop.'
     ) 'Green'
 
+    $openAt = (Get-Date).AddSeconds(6)
+    $opened = ($NoBrowser -or $DryRun -or [bool]$env:BE3600_NO_BROWSER)
+
     while ($true) {
         # Poll instead of blocking so Ctrl+C always works.
-        while (-not $listener.Pending()) { Start-Sleep -Milliseconds 100 }
+        while (-not $listener.Pending()) {
+            Start-Sleep -Milliseconds 100
+            if (-not $opened -and (Get-Date) -gt $openAt) {
+                $opened = $true
+                if (-not $Script:Pinged) {          # the page is not open yet: open it
+                    Write-Ok 'Opening Motion Studio in your browser'
+                    try { Start-Process $Script:StudioUrl } catch {}
+                }
+            }
+        }
         Handle-Client ($listener.AcceptTcpClient())
     }
 }

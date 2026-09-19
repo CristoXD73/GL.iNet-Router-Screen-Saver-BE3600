@@ -9,6 +9,7 @@ import http.client
 import json
 import os
 import re
+import shutil
 import socket
 import stat
 import struct
@@ -200,7 +201,7 @@ check(ssh_args()[-1] == "be3600-anim list --plain", "it asks the router for the 
 
 set_out("- \tfoo\t1\t1.0\n")                       # a router from before --plain existed
 s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
-check(s == 502 and "older" in d["message"], "an old router is told to update, not shown an empty list")
+check(s == 502 and "out of date" in d["message"], "an old router is told to update, not shown an empty list")
 
 set_rc(255)
 set_out("root@10.0.0.1: Permission denied (publickey,password).\n")
@@ -274,6 +275,135 @@ s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
 check(s == 409 and d["busy"], "while a send is running, other jobs are told to wait")
 sl.Config.lock.release()
 sl.Config.key = None
+
+print("== putting the screen saver on the router ==")
+import base64  # noqa: E402
+import io  # noqa: E402
+import tarfile  # noqa: E402
+
+CALLS = []
+_real_run_ssh = sl.run_ssh
+
+
+def _recording_run_ssh(ip, remote, stdin_path=None):
+    body = open(stdin_path, "rb").read() if stdin_path else None
+    CALLS.append((remote, body))
+    return _real_run_ssh(ip, remote, stdin_path)
+
+
+sl.run_ssh = _recording_run_ssh
+os.environ["BE3600_ASSUME_YES"] = "1"
+sl.Config.key = "/tmp/some-key"
+
+path, pid = sl.get_payload()
+names = tarfile.open(path, "r:gz").getnames() if path else []
+check(pid == "dev" and "setup/router-install.sh" in names and "router/usr/sbin/be3600-anim" in names
+      and "animations/default.bea.gz" in names, "from a clone it packs router/, setup/ and animations/")
+os.unlink(path)
+
+buf = io.BytesIO()
+with tarfile.open(fileobj=buf, mode="w:gz") as t:
+    ti = tarfile.TarInfo("setup/router-install.sh")
+    ti.size = 2
+    t.addfile(ti, io.BytesIO(b"#\n"))
+packed = buf.getvalue()
+
+set_rc(0)
+set_out("HAVE-ANIM\nLIST-OK\n")                     # installed, no version file (an older install)
+CALLS.clear()
+sl.confirm_installed("10.0.0.1")
+check(len(CALLS) == 1, "from a clone, an installed router is left alone")
+
+sl.PAYLOAD = ("abc123abc123", base64.b64encode(packed).decode())
+set_out("abc123abc123\nHAVE-ANIM\nLIST-OK\n")
+CALLS.clear()
+sl.confirm_installed("10.0.0.1")
+check(len(CALLS) == 1, "a router with the same version is left alone")
+
+set_out("oldversion\nHAVE-ANIM\nLIST-OK\n")
+CALLS.clear()
+sl.confirm_installed("10.0.0.1")
+check(len(CALLS) == 2 and "BE3600_VERSION=abc123abc123 sh setup/router-install.sh" in CALLS[1][0]
+      and CALLS[1][0].startswith("rm -rf /tmp/be3600-setup") and "gunzip -c | tar xf -" in CALLS[1][0],
+      "an older version is updated by unpacking the bundle and running the router installer")
+check(CALLS[1][1] == packed, "the bundle arrives byte for byte")
+
+set_out("HAVE-ANIM\n")                              # be3600-anim exists but is too old for --plain
+CALLS.clear()
+sl.confirm_installed("10.0.0.1")
+check(len(CALLS) == 2, "a router whose software predates the plain list is updated")
+
+set_out("")                                          # nothing there at all
+CALLS.clear()
+sl.confirm_installed("10.0.0.1")
+check(len(CALLS) == 2 and "router-install.sh" in CALLS[1][0], "a router without the screen saver gets it installed")
+
+del os.environ["BE3600_ASSUME_YES"]
+set_out("")
+CALLS.clear()
+sl.confirm_installed("10.0.0.1")
+check(len(CALLS) == 1, "without a person to say yes (no terminal), nothing is installed")
+
+set_rc(3)
+set_out("ERROR: no /dev/fb0\n")
+check(sl.install_on_router("10.0.0.1", "/dev/null", "x") is False, "a router that is not a BE3600 is reported, not installed")
+set_rc(0)
+sl.PAYLOAD = None
+sl.Config.key = None
+
+print("== remembering this computer ==")
+sl.KEY_FILE = os.path.join(WORK, "studio-key")
+os.environ["BE3600_ASSUME_YES"] = "1"
+sl.Config.password = "hunter2"
+sl.Config.askpass = sl.make_askpass()
+set_rc(0)
+set_out("studio-ok\n")
+CALLS.clear()
+sys.stdin = io.StringIO("")                              # no terminal: it must never wait for typing
+if not shutil.which("ssh-keygen"):
+    print("  skip  ssh-keygen is not installed here; the key tests are skipped")
+else:
+    sl.offer_remember("10.0.0.1")
+    if os.path.exists(sl.KEY_FILE):
+        add = next((c for c in CALLS if "authorized_keys" in c[0]), None)
+        pub = open(sl.KEY_FILE + ".pub", "rb").read()
+        check(add is not None and add[1] == pub, "it sends the public key (and only that) to the router")
+        check(add is not None and "chmod 600" in add[0] and sl.KEY_COMMENT in add[0] and "sed -i" in add[0],
+              "the router file is locked down, and an older key from this computer is replaced")
+        check(sl.Config.key == sl.KEY_FILE and sl.Config.password is None, "it switches to the key and lets go of the password")
+        check(b"PRIVATE KEY" in open(sl.KEY_FILE, "rb").read() and os.stat(sl.KEY_FILE).st_mode & 0o077 == 0,
+              "the private key stays on this computer, readable only by you")
+
+        sl.Config.key = None
+        forget_calls()
+        CALLS.clear()
+        check(sl.log_in() == "127.0.0.1" and sl.Config.key == sl.KEY_FILE, "next time it logs in with the key, asking nothing")
+
+        sl.forget("10.0.0.1")
+        gone = next((c for c in CALLS if "sed -i" in c[0] and "authorized_keys" in c[0]), None)
+        check(gone is not None and not os.path.exists(sl.KEY_FILE) and not os.path.exists(sl.KEY_FILE + ".pub"),
+              "forgetting removes the key from the router and from this computer")
+    else:
+        check(False, "it creates a key file")
+
+    sl.Config.key, sl.Config.password = None, "hunter2"     # the router does not accept the key
+    set_out("Permission denied\n")
+    sl.offer_remember("10.0.0.1")
+    check(sl.Config.key is None and sl.Config.password == "hunter2" and not os.path.exists(sl.KEY_FILE),
+          "if the key does not work it cleans up and keeps the password")
+
+with open(sl.KEY_FILE, "w") as f:
+    f.write("stale")
+sl.Config.key, sl.Config.password = None, None
+set_out("Permission denied\n")
+sl.Config.router = "127.0.0.1"
+sl.log_in()
+check(sl.Config.key is None, "a remembered key the router no longer accepts is dropped (it falls back to the password)")
+os.unlink(sl.KEY_FILE)
+os.environ.pop("BE3600_ASSUME_YES", None)
+sl.run_ssh = _real_run_ssh
+sl.Config.password = None
+set_out(None)
 
 server.shutdown()
 print("\n" + ("%d Studio Link test(s) FAILED." % FAILS if FAILS else "All Studio Link tests passed."))
