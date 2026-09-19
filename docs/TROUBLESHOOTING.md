@@ -54,11 +54,34 @@ be3600-anim set colors.bea
 It should show red, green, blue, white. If red and blue are swapped, change the
 byte packing in `pack_pixel()` in that script.
 
-## `install.sh` refuses to run
+## The installer says "Could not connect or log in"
 
-* "display is ... expected 76,284 at 16bpp": this is not a GL-BE3600 display.
-  `FORCE=1 sh install.sh` overrides the check, but the frame size will not
-  match and the player will refuse your animations.
+* Is this computer connected to the router (its Wi-Fi or LAN port)?
+* The password is the router's **admin** password, the same one used on its
+  admin web page. Nothing is shown while you type it.
+* If it tried the wrong address, run it again with the right one:
+  `Install.cmd -Router 192.168.x.x` (Windows) or `./install.sh 192.168.x.x`.
+  The address that works is remembered for next time in
+  `%LOCALAPPDATA%\be3600-screensaver\router.txt` (Windows) or
+  `~/.config/be3600-screensaver/router` (macOS/Linux); delete it to forget it.
+
+## The installer says the device "is not a GL-BE3600"
+
+The address answered on SSH but it isn't a router with the BE3600's front
+display (a second router on your network, for example). Nothing was changed on
+it; the installer asks for the right address and tries again.
+
+## Windows says the script is blocked or from an untrusted source
+
+The ZIP you downloaded is marked as coming from the internet. Right-click the
+ZIP, choose **Properties**, tick **Unblock**, then unzip again; or choose
+"More info, Run anyway" on the warning.
+
+## The router installer refuses to run
+
+* "not a GL-BE3600 ... expected 76,284 at 16bpp": this is not a GL-BE3600
+  display. `FORCE=1 sh setup/router-install.sh` on the router overrides the
+  check, but the frame size will not match and the player will refuse animations.
 * "no lua interpreter": install one with `opkg install lua`.
 
 ## Scripts fail with `not found` or odd characters
@@ -70,8 +93,9 @@ multi-line string to `ssh` re-adds CRLF; copy files with `scp` instead.
 
 ## `scp` says "subsystem request failed" / "sftp-server: not found"
 
-OpenWrt's SSH server (dropbear) usually has no SFTP. Use the legacy protocol:
-`scp -O ...`.
+Only relevant if you copy files by hand: OpenWrt's SSH server (dropbear)
+usually has no SFTP. Use the legacy protocol: `scp -O ...`. (The installers
+avoid `scp` entirely and stream the files through a single `ssh` session.)
 
 ## After `be3600-anim off` the normal screen is blank
 
@@ -81,5 +105,5 @@ OpenWrt's SSH server (dropbear) usually has no SFTP. Use the legacy protocol:
 
 ## Removing everything
 
-`sh uninstall.sh` (or `sh uninstall.sh --purge` to also delete your animation
-and config) puts the router back the way it was.
+On the router, `be3600-uninstall` (or `be3600-uninstall --purge` to also delete
+your animation and config) puts it back the way it was.

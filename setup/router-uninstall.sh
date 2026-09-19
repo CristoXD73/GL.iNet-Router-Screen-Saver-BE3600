@@ -1,14 +1,14 @@
 #!/bin/sh
 #
 # Completely remove the BE3600 animation screensaver and restore the stock
-# screen. Run as root ON THE ROUTER.
+# screen. Installed on the router as:  be3600-uninstall
 #
-#   sh uninstall.sh            remove it, keep /etc/be3600-screen (your .bea + config)
-#   sh uninstall.sh --purge    also delete /etc/be3600-screen
+#   be3600-uninstall            remove it, keep /etc/be3600-screen (your .bea + config)
+#   be3600-uninstall --purge    also delete /etc/be3600-screen
 
-die() { echo "error: $*" >&2; exit 1; }
+die() { echo "  ERROR: $*" >&2; exit 1; }
 
-[ "$(id -u)" = "0" ] || die "run as root"
+[ "$(id -u)" = "0" ] || die "must run as root"
 
 echo "Stopping and disabling the service..."
 /etc/init.d/be3600-screensaver stop    >/dev/null 2>&1

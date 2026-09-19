@@ -1,8 +1,17 @@
 # The router's shell (BusyBox ash) breaks on Windows line endings: every
-# script must stay LF no matter what Git's autocrlf setting is.
+# script that runs on the router, and the macOS/Linux scripts, must stay LF no
+# matter what Git's autocrlf setting is.
 * text=auto eol=lf
 *.sh text eol=lf
 *.lua text eol=lf
 router/** text eol=lf
+setup/** text eol=lf
+
+# The Windows launchers are the opposite: cmd.exe is happiest with CRLF.
+*.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# Never touch these.
 *.bea binary
+*.gz binary
+*.png binary

@@ -3,66 +3,64 @@
 A custom animation screensaver for the small front display of the
 **GL.iNet GL-BE3600 (Slate 7)** travel router.
 
-After the display has been idle for a while (10 seconds by default), your
-animation takes over the screen. Touch the screen and the normal GL.iNet UI
-comes straight back; leave it alone and the animation returns. One command
-turns the whole thing off, and one script removes it.
+Leave the router alone for a few seconds and an animation takes over the
+screen. Touch it and the normal GL.iNet UI comes straight back. One command
+turns it off, one script removes it, and swapping in your own animation is a
+drag and drop.
 
-```
-be3600-anim on | off | status | set FILE.bea | check
-```
+![Frames from the bundled animation](docs/preview.png)
 
-> **Status:** tested on one GL-BE3600 running GL.iNet firmware 4.8.3. It has
-> not been tried on other models or firmware versions, and the "keep across a
-> firmware upgrade" list has not been tested against a real upgrade. See
-> [Limitations](#limitations).
+*The bundled animation (25 seconds, looping): two eyes that look around.*
 
-## What you need
+## Install: one click
 
-* A GL-BE3600 with SSH access as `root`.
-* `lua` on the router (it is in GL.iNet's firmware; otherwise `opkg install lua`).
-* An animation in `.bea` format. There is no ready-made animation in this
-  repository; [`tools/make-sample-bea.py`](tools/make-sample-bea.py) generates
-  test ones, and [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md) describes the
-  format so you can produce your own.
+**Windows**
 
-## Install
+1. Click **Code, Download ZIP** on this page and unzip it.
+2. Double-click **`Install.cmd`**.
+3. Type your router's admin password when asked. That's it.
 
-From the project directory on your computer:
+**macOS / Linux**
 
 ```sh
-# macOS / Linux
-tools/deploy.sh 192.168.8.1
-```
-```powershell
-# Windows (PowerShell)
-powershell -File tools\deploy.ps1 -Router 192.168.8.1
+./install.sh
 ```
 
-(Add `-Key path\to\private_key` on Windows if you use a key file. `192.168.8.1`
-is GL.iNet's default router address.)
+It finds your router by itself: it tries the address that worked last time,
+then this computer's default gateway, then GL.iNet's factory address
+(`192.168.8.1`). If none of those is your BE3600 (for example, it sits behind
+another router), it asks for the address once and remembers it. To use a
+specific address: `Install.cmd -Router 192.168.x.x` or `./install.sh 192.168.x.x`.
 
-Or copy the folder to the router yourself and run `sh install.sh` there.
+The animation is bundled, so there is nothing else to download. If your router
+already has an animation, the installer keeps it.
 
-The installer copies the files, adds them to `/etc/sysupgrade.conf`, and
-enables the service. It only **starts** the screensaver if a valid animation is
-already at `/etc/be3600-screen/active.bea`; otherwise it tells you what to do:
+> The password is the same one you use on the router's admin page. It is typed
+> into `ssh`'s own prompt; these scripts never see or store it. On the first
+> connection the router's SSH key is trusted automatically (`accept-new`).
+>
+> Windows may warn about a script downloaded from the internet. Right-click the
+> ZIP, choose Properties, and tick **Unblock** before unzipping, or choose
+> "More info, Run anyway" on the warning.
 
-```sh
-scp -O my-animation.bea root@192.168.8.1:/tmp/
-ssh root@192.168.8.1 'be3600-anim set /tmp/my-animation.bea && be3600-anim on'
-```
+## Change the animation: drag and drop
 
-To try it without making an animation first:
+**Windows:** drag a `.bea` file onto **`Set-Animation.cmd`**. Or double-click it
+and drag the file into the window that opens.
 
-```sh
-python3 tools/make-sample-bea.py colors colors.bea   # red, green, blue, white
-python3 tools/make-sample-bea.py scroll scroll.bea   # scrolling rainbow
-```
+**macOS / Linux:** run `./set-animation.sh`, then drag the file into the window.
 
-## Use
+The tool checks the file first and tells you in plain words what is wrong if it
+is not a valid animation, then sends it to the router and switches over. You
+can drop several files in a row.
 
-Run these on the router (over SSH):
+A `.bea` is a very simple format: see [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md).
+To generate test animations, [`tools/make-sample-bea.py`](tools/make-sample-bea.py)
+makes a red/green/blue/white colour test and a scrolling rainbow.
+
+## Everyday use
+
+Over SSH on the router (`ssh root@<router-address>`):
 
 | Command | What it does |
 |---------|--------------|
@@ -72,9 +70,9 @@ Run these on the router (over SSH):
 | `be3600-anim set FILE.bea` | Check `FILE.bea` and make it the active animation. |
 | `be3600-anim check` | Validate the active animation and print its loop length. |
 
-The animation **stays until you turn it off or remove it**: it survives
-reboots (`be3600-anim off` is the only thing that stops it coming back).
-Touching the screen only dismisses it temporarily.
+The screensaver survives reboots. Touching the screen only dismisses it for a
+moment; it comes back when the screen has been idle again. `be3600-anim off` is
+the one thing that stops it.
 
 ### Settings
 
@@ -89,15 +87,14 @@ Run `be3600-anim on` after editing to apply.
 
 ## Remove
 
-The installer puts a removal command on the router, so over SSH:
+Over SSH on the router:
 
 ```sh
 be3600-uninstall            # remove the screensaver, keep your animation + config
 be3600-uninstall --purge    # remove everything, including /etc/be3600-screen
 ```
 
-(It is the same file as `uninstall.sh` in this repository.) It stops and
-disables the service, deletes the installed files, removes the
+It stops and disables the service, deletes the installed files, removes the
 `sysupgrade.conf` entries, and makes sure the stock GL.iNet screen is running
 again. The difference from `be3600-anim off`: `off` is a switch (everything
 stays installed, easy to turn back on); `be3600-uninstall` deletes it.
@@ -115,28 +112,38 @@ in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
 * **Only tested on a GL-BE3600** (display `fb_st7789p3`, 76x284, touch
   controller Hynitron CST816X) with firmware 4.8.3. The installer refuses to
-  run on a display with different dimensions unless you set `FORCE=1`.
+  install on a device without that display unless you set `FORCE=1` on the
+  router, and it will ask for a different address if you point it at the wrong
+  device.
+* The Windows scripts were tested on Windows 11; the macOS/Linux scripts were
+  tested in a Linux container, **not on a real Mac**.
 * **While the animation is showing, GL.iNet's screen UI is stopped.** Touch the
   screen to get it back.
 * **Firmware upgrades are untested.** The installer lists the project's files
   in `/etc/sysupgrade.conf` so a "keep settings" upgrade should preserve them,
-  but this has not been verified. Re-run the installer if anything is missing.
+  but this has not been verified. Just run the installer again if anything is
+  missing afterwards.
 * The player writes frames directly to `/dev/fb0` with no double buffering, so
   fast, full-screen motion may show tearing.
 * Uses only what ships in the firmware (`sh`, `lua`, `procd`); nothing to
   compile.
 
-## Layout
+## What's in the folder
 
 ```
+Install.cmd        Windows: double-click to install
+Set-Animation.cmd  Windows: drag a .bea onto it to change the animation
+install.sh         macOS/Linux installer
+set-animation.sh   macOS/Linux drag-and-drop tool
+animations/        the bundled animation (gzip-compressed)
 router/            files that end up on the router (same paths as on the device)
-install.sh         install on the router (also installs be3600-uninstall)
-uninstall.sh       the removal script (installed on the router as be3600-uninstall)
-tools/             deploy.sh / deploy.ps1 (push from your computer), make-sample-bea.py
+setup/             scripts that run on the router during install / uninstall
+tools/             the Windows PowerShell behind the .cmd files, make-sample-bea.py
 docs/              BEA-FORMAT, HOW-IT-WORKS, TROUBLESHOOTING
 ```
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Not affiliated with or endorsed by GL Technologies.
-Use at your own risk; this replaces the display owner on your router.
+MIT, see [LICENSE](LICENSE), including the bundled animation. Not affiliated
+with or endorsed by GL Technologies. Use at your own risk; this replaces the
+display owner on your router.

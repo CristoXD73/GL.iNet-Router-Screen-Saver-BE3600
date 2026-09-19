@@ -85,7 +85,25 @@ Treat the mechanism as a hypothesis; the fix is what was verified.
 
 * **Reboots:** `be3600-anim on` enables the service (`/etc/rc.d/S99...`), and it
   starts again on every boot. `be3600-anim off` removes that link.
-* **Firmware upgrades:** `install.sh` appends the project's files to
+* **Firmware upgrades:** the installer appends the project's files to
   `/etc/sysupgrade.conf`, which is the standard OpenWrt list of files kept by a
   "keep settings" upgrade. **This has not been tested against a real firmware
-  upgrade.** Re-run `install.sh` if anything is missing afterwards.
+  upgrade.** Run the installer again if anything is missing afterwards.
+
+## How the installer works
+
+`Install.cmd` / `install.sh` never copy files one by one. They pack `router/`,
+`setup/` and `animations/` into a single tar stream and pipe it through **one**
+`ssh` session that unpacks it into `/tmp` on the router and runs
+`setup/router-install.sh`. One session means you type the password once, and no
+`scp` (OpenWrt's SSH server has no SFTP) is involved. On Windows the stream is
+attached with `cmd.exe`'s `<` redirection because PowerShell's own pipe
+re-encodes data and would corrupt the archive.
+
+`setup/router-install.sh` then: checks that this really is a BE3600-style
+router (exit code 3 if not, which makes the desktop installer ask for another
+address); installs the files and the `be3600-uninstall` command; unpacks the
+bundled animation only if the router has no valid one; and starts the service.
+
+`Set-Animation.cmd` / `set-animation.sh` validate a `.bea` locally first, then
+stream just that file into `be3600-anim set` on the router in one session.
