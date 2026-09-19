@@ -1,4 +1,4 @@
-# be3600-screensaver
+  # be3600-screensaver
 
 A custom animation screensaver for the small front display of the
 **GL.iNet GL-BE3600 (Slate 7)** travel router.
@@ -8,7 +8,7 @@ screen. Touch it and the normal GL.iNet UI comes straight back. One command
 turns it off, one script removes it, and swapping in your own animation is a
 drag and drop.
 
-![Frames from the bundled animation](docs/preview.png)
+![Frames from the bundled animation](<img width="960" height="584" alt="Image" src="https://github.com/user-attachments/assets/54829fd5-542e-4acf-9441-0a5379d06e56" />)
 
 *The bundled animation (25 seconds, looping): two eyes that look around.*
 
