@@ -1,10 +1,13 @@
 #!/usr/bin/lua
 
--- be3600-wait-touch.lua -- blocks until a finger touches the screen.
--- Exit codes: 0 = finger down, 2 = the touch device could not be read.
+-- be3600-wait-touch.lua -- watches the touchscreen.
 --
---   be3600-wait-touch.lua            wait for a touch
---   be3600-wait-touch.lua --which    print the touch device it would use, then exit
+--   be3600-wait-touch.lua                  wait for a touch, then exit 0
+--   be3600-wait-touch.lua --wait-release   wait for the finger to lift, then exit 0
+--   be3600-wait-touch.lua --which          print the touch device it would use, then exit
+--
+-- Exit codes: 0 = the thing being waited for happened, 2 = the touch device
+-- could not be read.
 --
 -- Which device: TOUCH_DEVICE (from /etc/be3600-screen/config) if set; otherwise
 -- the first /sys/class/input/eventN whose name contains "touch" (on the BE3600
@@ -44,10 +47,14 @@ end
 
 local DEVICE, WHY = detect_device()
 
-if arg and arg[1] == "--which" then
+local MODE = arg and arg[1] or nil
+
+if MODE == "--which" then
     print(DEVICE .. " (" .. WHY .. ")")
     os.exit(0)
 end
+
+local WAIT_RELEASE = (MODE == "--wait-release")
 
 
 local function u16(s,p)
@@ -107,6 +114,40 @@ local f =
 f:setvbuf("no")
 
 
+if WAIT_RELEASE then
+
+    -- Block until the finger lifts. A real tap is not instantaneous: while a
+    -- finger stays down, the controller keeps reporting it, so a helper
+    -- started right after a press would immediately see that SAME contact
+    -- and mistake it for a brand new touch. The supervisor uses this mode to
+    -- wait for a genuine lift-off before it starts timing a possible second
+    -- tap, so one tap is never miscounted as the start of a double-tap.
+    while true do
+
+        local e = f:read(24)
+
+        if not e or #e ~= 24 then
+            os.exit(2)
+        end
+
+        local typ   = u16(e,17)
+        local code  = u16(e,19)
+        local value = i32(e,21)
+
+        -- EV_KEY / BTN_TOUCH or BTN_TOOL_FINGER / release
+        if typ == 1 and (code == 330 or code == 325) and value == 0 then
+            os.exit(0)
+        end
+
+        -- EV_ABS / ABS_MT_TRACKING_ID / -1 means the finger lifted
+        if typ == 3 and code == 57 and value < 0 then
+            os.exit(0)
+        end
+    end
+end
+
+
+-- Default mode: exit 0 as soon as any finger touches the screen.
 while true do
 
     local e = f:read(24)

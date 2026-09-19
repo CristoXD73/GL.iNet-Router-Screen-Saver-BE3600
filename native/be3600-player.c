@@ -5,7 +5,11 @@
  * starts a separate /bin/usleep process for every frame, this one sleeps until an
  * absolute deadline with clock_nanosleep(), so timing errors do not add up.
  *
- *   be3600-player [file.bea]      default: /etc/be3600-screen/active.bea
+ *   be3600-player [--fade MS] [file.bea]   default file: /etc/be3600-screen/active.bea
+ *
+ * --fade MS crossfades from whatever is on the screen now into the animation's
+ * first frame over about MS milliseconds (1..5000), instead of cutting to it
+ * instantly. Used when switching between saved animations.
  *
  * Test hooks (unused in normal operation), same as the Lua player:
  *   BE3600_FB     framebuffer path (point it at an ordinary file to test on a PC)
@@ -195,9 +199,69 @@ static long long ts_diff_ns(const struct timespec *a, const struct timespec *b)
     return (long long)(a->tv_sec - b->tv_sec) * 1000000000LL + (a->tv_nsec - b->tv_nsec);
 }
 
+/* Mixes one RGB565 pixel toward another. weight is 0 (all "from") to 256
+ * (all "to"); exact at both ends so a full crossfade begins and ends on the
+ * exact original pixels, with no rounding drift. */
+static uint16_t mix565(uint16_t from, uint16_t to, unsigned weight)
+{
+    unsigned r0 = (from >> 11) & 31, g0 = (from >> 5) & 63, b0 = from & 31;
+    unsigned r1 = (to   >> 11) & 31, g1 = (to   >> 5) & 63, b1 = to   & 31;
+    unsigned r = (r0 * (256 - weight) + r1 * weight) >> 8;
+    unsigned g = (g0 * (256 - weight) + g1 * weight) >> 8;
+    unsigned b = (b0 * (256 - weight) + b1 * weight) >> 8;
+
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
+/* Crossfades from whatever picture is currently on the screen to `target`
+ * over about `ms` milliseconds, landing exactly on `target`. Falls back to
+ * an instant cut (returns immediately, drawing nothing) if the screen can't
+ * be read back to fade from. */
+static void fade_in(int fd, const uint8_t *target, unsigned ms)
+{
+    static uint8_t from[FRAME_BYTES], mixed[FRAME_BYTES];
+    unsigned steps, step, i;
+    struct timespec next;
+    long long step_ns;
+
+    if (pread(fd, from, FRAME_BYTES, 0) != (ssize_t)FRAME_BYTES)
+        return;
+
+    steps = ms / 30;
+    if (steps < 2) steps = 2;
+    if (steps > 40) steps = 40;
+    step_ns = (long long)ms * 1000000LL / (long long)steps;
+
+    clock_gettime(CLOCK_MONOTONIC, &next);
+
+    for (step = 1; step <= steps && !stop_requested; step++) {
+        unsigned weight = 256u * step / steps;
+
+        for (i = 0; i < FRAME_BYTES; i += 2) {
+            uint16_t a = (uint16_t)(from[i] | (from[i + 1] << 8));
+            uint16_t b = (uint16_t)(target[i] | (target[i + 1] << 8));
+            uint16_t m = mix565(a, b, weight);
+
+            mixed[i]     = (uint8_t)(m & 255);
+            mixed[i + 1] = (uint8_t)(m >> 8);
+        }
+
+        if (write_all(fd, mixed, FRAME_BYTES, 0) != 0)
+            return;
+
+        ts_add_ns(&next, step_ns);
+
+        while (!stop_requested && clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL) == EINTR) {
+            if (stop_requested) break;
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
-    const char *path = argc > 1 ? argv[1] : "/etc/be3600-screen/active.bea";
+    const char *path = "/etc/be3600-screen/active.bea";
+    unsigned fade_ms = 0;
+    int ai;
     const char *fbpath = getenv("BE3600_FB");
     const char *loops_env = getenv("BE3600_LOOPS");
     long max_loops = loops_env && *loops_env ? atol(loops_env) : 0;
@@ -211,9 +275,17 @@ int main(int argc, char **argv)
     struct timespec next, now;
     struct sigaction sa;
 
-    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
-        puts("be3600-player 1 (BEA1, BEA2)");
-        return 0;
+    for (ai = 1; ai < argc; ai++) {
+        if (strcmp(argv[ai], "--version") == 0) {
+            puts("be3600-player 2 (BEA1, BEA2, --fade)");
+            return 0;
+        } else if (strcmp(argv[ai], "--fade") == 0 && ai + 1 < argc) {
+            long v = atol(argv[ai + 1]);
+            fade_ms = (v > 0 && v <= 5000) ? (unsigned)v : 0;
+            ai++;
+        } else {
+            path = argv[ai];
+        }
     }
 
     buf = load_file(path, &size);
@@ -221,7 +293,9 @@ int main(int argc, char **argv)
     recs = index_file(buf, size, &is_v2, &fps, &n);
     if (!recs) return 1;
 
-    fd = open(fbpath ? fbpath : "/dev/fb0", O_WRONLY | (fbpath ? O_CREAT : 0), 0644);
+    /* O_RDWR (not O_WRONLY): a fade needs to read back what is on the screen
+     * now before blending into the first frame. */
+    fd = open(fbpath ? fbpath : "/dev/fb0", O_RDWR | (fbpath ? O_CREAT : 0), 0644);
     if (fd < 0) return die(fbpath ? fbpath : "/dev/fb0", strerror(errno));
 
     memset(&sa, 0, sizeof sa);
@@ -229,6 +303,9 @@ int main(int argc, char **argv)
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
+
+    if (fade_ms > 0)
+        fade_in(fd, buf + recs[0].off, fade_ms);
 
     tick_ns = 1000000000LL / (long long)fps;
     clock_gettime(CLOCK_MONOTONIC, &next);
