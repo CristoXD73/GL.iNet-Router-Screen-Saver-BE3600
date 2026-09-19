@@ -200,8 +200,9 @@ function Test-BeaFile {
         $h = New-Object byte[] 12
         [void]$fs.Read($h, 0, 12)
 
-        if ([System.Text.Encoding]::ASCII.GetString($h, 0, 4) -ne 'BEA1') {
-            return @{ Ok = $false; Reason = 'That is not a .bea animation (it does not start with the BEA1 marker).' }
+        $magic = [System.Text.Encoding]::ASCII.GetString($h, 0, 4)
+        if ($magic -ne 'BEA1' -and $magic -ne 'BEA2') {
+            return @{ Ok = $false; Reason = 'That is not a .bea animation (it does not start with the BEA1 or BEA2 marker).' }
         }
 
         $fps = [int][BitConverter]::ToUInt16($h, 4)
@@ -214,17 +215,38 @@ function Test-BeaFile {
         if ($fps -lt 1 -or $fps -gt 24) { return @{ Ok = $false; Reason = "Its speed is $fps frames per second; it must be 1 to 24." } }
         if ($rec -lt 1) { return @{ Ok = $false; Reason = 'It has no frames.' } }
 
-        $expected = 12 + $rec * (2 + $fb)
-        if ($fs.Length -ne $expected) {
-            return @{ Ok = $false; Reason = "Its size is $($fs.Length) bytes but its header says it should be $expected. It may be incomplete." }
-        }
-
         $ticks = 0
-        $two = New-Object byte[] 2
-        for ($i = 0; $i -lt $rec; $i++) {
-            [void]$fs.Seek(12 + $i * (2 + $fb), 'Begin')
-            [void]$fs.Read($two, 0, 2)
-            $ticks += [int][BitConverter]::ToUInt16($two, 0)
+
+        if ($magic -eq 'BEA1') {
+            $expected = 12 + $rec * (2 + $fb)
+            if ($fs.Length -ne $expected) {
+                return @{ Ok = $false; Reason = "Its size is $($fs.Length) bytes but its header says it should be $expected. It may be incomplete." }
+            }
+
+            $two = New-Object byte[] 2
+            for ($i = 0; $i -lt $rec; $i++) {
+                [void]$fs.Seek(12 + $i * (2 + $fb), 'Begin')
+                [void]$fs.Read($two, 0, 2)
+                $ticks += [int][BitConverter]::ToUInt16($two, 0)
+            }
+        } else {
+            # BEA2: walk the records (run, kind, payload length, payload). The router
+            # checks every span in every delta when the file is installed.
+            $pos = [int64]12
+            $r = New-Object byte[] 7
+            for ($i = 0; $i -lt $rec; $i++) {
+                if ($pos + 7 -gt $fs.Length) { return @{ Ok = $false; Reason = "It is cut off at frame $($i + 1). It may be incomplete." } }
+                [void]$fs.Seek($pos, 'Begin')
+                [void]$fs.Read($r, 0, 7)
+                $kind = [int]$r[2]
+                $plen = [int64][BitConverter]::ToUInt32($r, 3)
+                if ($kind -gt 2 -or ($i -eq 0 -and $kind -ne 0)) { return @{ Ok = $false; Reason = "Frame $($i + 1) is not valid BEA2 data." } }
+                $ticks += [int][BitConverter]::ToUInt16($r, 0)
+                $pos += 7 + $plen
+            }
+            if ($pos -ne $fs.Length) {
+                return @{ Ok = $false; Reason = "Its size is $($fs.Length) bytes but its frames add up to $pos. It may be incomplete." }
+            }
         }
 
         return @{ Ok = $true; Frames = $rec; Fps = $fps; Seconds = ($ticks / $fps); Bytes = $fs.Length }

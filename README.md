@@ -83,6 +83,9 @@ is not a valid animation, then sends it to the router and switches over. You
 can drop several files in a row.
 
 A `.bea` is a very simple format: see [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md).
+There are two versions: `BEA1` stores every frame, and `BEA2` stores only what
+changes, which makes most animations 10x or more smaller.
+[`tools/bea2.py`](tools/bea2.py) converts between them without losing anything.
 To generate test animations, [`tools/make-sample-bea.py`](tools/make-sample-bea.py)
 makes a red/green/blue/white colour test and a scrolling rainbow.
 

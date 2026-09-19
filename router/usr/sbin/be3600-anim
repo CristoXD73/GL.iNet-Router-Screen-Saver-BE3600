@@ -181,7 +181,16 @@ preview() {
 
     # The supervisor must stop first (it would fight us for the screen); stopping
     # it brings gl_screen back, so stop that too before drawing.
-    [ "$WAS_RUNNING" -eq 1 ] && "$SVC" stop
+    if [ "$WAS_RUNNING" -eq 1 ]; then
+        "$SVC" stop
+        # "stop" returns before the supervisor has finished its clean-up (which kills
+        # any player by name), so wait for it to be really gone.
+        W=0
+        while [ -d "$LOCKDIR" ] && [ "$W" -lt 20 ]; do
+            /bin/usleep 250000
+            W=$((W + 1))
+        done
+    fi
     /etc/init.d/gl_screen stop >/dev/null 2>&1 || true
     /bin/usleep 300000
     echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
