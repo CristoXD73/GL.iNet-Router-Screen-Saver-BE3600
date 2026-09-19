@@ -1,0 +1,8 @@
+# The router's shell (BusyBox ash) breaks on Windows line endings: every
+# script must stay LF no matter what Git's autocrlf setting is.
+* text=auto eol=lf
+*.sh text eol=lf
+*.lua text eol=lf
+router/** text eol=lf
+*.ps1 text eol=crlf
+*.bea binary

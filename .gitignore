@@ -1,0 +1,10 @@
+# Your own animations can be large; keep them out of the repo.
+*.bea
+!examples/*.bea
+
+# Never commit keys or credentials.
+*.pem
+*.key
+id_*
+*_key
+*.pub

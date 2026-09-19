@@ -1,0 +1,8 @@
+# be3600-screensaver settings (plain shell syntax, sourced by the supervisor).
+# Restart after editing:  be3600-anim on
+
+# Animation to play. Replace it with:  be3600-anim set /path/to/file.bea
+ANIMATION="/etc/be3600-screen/active.bea"
+
+# Seconds without a touch before the animation starts (0 = immediately).
+IDLE_SECONDS=10

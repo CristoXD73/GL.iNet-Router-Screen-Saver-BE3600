@@ -1,0 +1,75 @@
+#!/bin/sh
+#
+# be3600-anim -- control the BE3600 animation screensaver.
+#
+#   be3600-anim on            enable at boot and start now
+#   be3600-anim off           stop, restore the stock screen, disable at boot
+#   be3600-anim status        show what is running
+#   be3600-anim set FILE.bea  validate FILE and make it the active animation
+#   be3600-anim check         validate the active animation and show its length
+
+SVC="/etc/init.d/be3600-screensaver"
+BEA="/etc/be3600-screen/active.bea"
+CHECK="/usr/bin/be3600-bea-check.lua"
+PIDFILE="/tmp/be3600-screen.pid"
+
+usage() {
+    sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'
+    exit 1
+}
+
+running() {
+    [ -f "$PIDFILE" ] && [ -d "/proc/$(cat "$PIDFILE" 2>/dev/null)" ]
+}
+
+case "$1" in
+
+on)
+    [ -f "$BEA" ] || { echo "no animation at $BEA -- install one with: be3600-anim set FILE.bea"; exit 1; }
+    lua "$CHECK" "$BEA" || exit 1
+    "$SVC" enable
+    if running; then "$SVC" restart; else "$SVC" start; fi
+    echo "screensaver ON: starts at boot; animation appears after the idle time, touch to dismiss."
+    ;;
+
+off)
+    "$SVC" stop
+    "$SVC" disable
+    echo "screensaver OFF: stock GL.iNet screen restored, will not start at boot."
+    ;;
+
+status)
+    if "$SVC" enabled; then echo "boot:       enabled"; else echo "boot:       disabled"; fi
+    if running; then echo "supervisor: running (PID $(cat "$PIDFILE"))"; else echo "supervisor: not running"; fi
+    if ps w | grep -q '[b]e3600-player.lua'; then
+        echo "display:    custom animation"
+    elif ps w | grep -q '[g]l_screen'; then
+        echo "display:    GL.iNet stock screen"
+    else
+        echo "display:    nothing is drawing to it"
+    fi
+    if [ -f "$BEA" ]; then lua "$CHECK" "$BEA" 2>&1 | sed 's/^/animation:  /'; else echo "animation:  none installed"; fi
+    ;;
+
+set)
+    FILE="$2"
+    [ -f "$FILE" ] || usage
+    lua "$CHECK" "$FILE" || exit 1
+    mkdir -p "$(dirname "$BEA")"
+    cp "$FILE" "$BEA.new" && mv "$BEA.new" "$BEA" || exit 1
+    echo "installed as $BEA"
+    if running; then
+        "$SVC" restart
+        echo "restarted the screensaver to pick it up."
+    fi
+    ;;
+
+check)
+    lua "$CHECK" "$BEA"
+    ;;
+
+*)
+    usage
+    ;;
+
+esac

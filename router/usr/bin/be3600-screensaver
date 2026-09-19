@@ -1,0 +1,301 @@
+#!/bin/sh
+#
+# be3600-screensaver -- supervisor for the BE3600 animation screensaver.
+#
+# Exactly one of two things owns the small front display at any time:
+#
+#   STOCK   GL.iNet's gl_screen (the normal UI)
+#   CUSTOM  be3600-player.lua, writing frames straight to /dev/fb0
+#
+#   STOCK --(IDLE_SECONDS with no touch)--> CUSTOM
+#   CUSTOM --(a finger touches the screen)--> STOCK
+#
+# Settings live in /etc/be3600-screen/config (shell syntax).
+
+CONF="/etc/be3600-screen/config"
+ANIMATION="/etc/be3600-screen/active.bea"
+IDLE_SECONDS=10
+PIDFILE="/tmp/be3600-screen.pid"
+PLAYER="/usr/bin/be3600-player.lua"
+TOUCH="/usr/bin/be3600-wait-touch.lua"
+
+[ -r "$CONF" ] && . "$CONF"
+
+PLAYER_PID=""
+CLEANED=0
+
+
+log() {
+    logger -t be3600-screen "$*"
+    echo "[be3600] $*"
+}
+
+
+# True if the PID exists and is not a zombie. (kill -0 alone reports
+# success for a zombie, so a crashed background job would look alive.)
+alive() {
+    [ -n "$1" ] &&
+    [ -r "/proc/$1/status" ] &&
+    ! grep -q '^State:[[:space:]]*Z' "/proc/$1/status" 2>/dev/null
+}
+
+
+# ------------------------------------------------------------
+# SINGLE SUPERVISOR ONLY
+# ------------------------------------------------------------
+
+if [ -f "$PIDFILE" ]; then
+
+    OLD="$(cat "$PIDFILE" 2>/dev/null)"
+
+    if alive "$OLD"; then
+        log "supervisor already running PID=$OLD"
+        exit 1
+    fi
+
+    rm -f "$PIDFILE"
+fi
+
+echo $$ > "$PIDFILE"
+
+
+# ------------------------------------------------------------
+# PROCESS CONTROL
+# ------------------------------------------------------------
+
+kill_custom() {
+
+    if [ -n "$PLAYER_PID" ]; then
+        kill "$PLAYER_PID" 2>/dev/null || true
+        wait "$PLAYER_PID" 2>/dev/null || true
+        PLAYER_PID=""
+    fi
+
+    for PID in $(ps w | grep '[b]e3600-player.lua' | awk '{print $1}'); do
+        kill "$PID" 2>/dev/null || true
+    done
+
+    /bin/usleep 150000
+
+    for PID in $(ps w | grep '[b]e3600-player.lua' | awk '{print $1}'); do
+        kill -9 "$PID" 2>/dev/null || true
+    done
+}
+
+
+kill_touch() {
+    for PID in $(ps w | grep '[b]e3600-wait-touch.lua' | awk '{print $1}'); do
+        kill "$PID" 2>/dev/null || true
+    done
+}
+
+
+stop_stock() {
+
+    /etc/init.d/gl_screen stop >/dev/null 2>&1 || true
+
+    COUNT=0
+
+    while ps w | grep -q '[g]l_screen'; do
+
+        COUNT=$((COUNT+1))
+
+        if [ "$COUNT" -ge 20 ]; then
+            for PID in $(ps w | grep '[g]l_screen' | awk '{print $1}'); do
+                kill -9 "$PID" 2>/dev/null || true
+            done
+            break
+        fi
+
+        /bin/usleep 100000
+    done
+}
+
+
+# ------------------------------------------------------------
+# DISPLAY OWNERSHIP
+# ------------------------------------------------------------
+
+start_stock() {
+
+    # Custom must die FIRST so the two never fight over the framebuffer.
+    kill_custom
+
+    # Never leave two GL.iNet instances running.
+    stop_stock
+
+    /etc/init.d/gl_screen start >/dev/null 2>&1 || true
+
+    log "OWNER = GL.iNet"
+}
+
+
+start_custom() {
+
+    kill_custom
+
+    # GL.iNet must fully release the framebuffer first.
+    stop_stock
+
+    echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
+
+    /usr/bin/lua "$PLAYER" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
+
+    PLAYER_PID=$!
+
+    /bin/usleep 200000
+
+    if ! alive "$PLAYER_PID"; then
+        log "ERROR: animation failed to start (see /tmp/be3600-player.log)"
+        start_stock
+        return 1
+    fi
+
+    log "OWNER = CUSTOM PID=$PLAYER_PID"
+
+    return 0
+}
+
+
+# ------------------------------------------------------------
+# WAIT FOR IDLE (stock owns the display)
+#
+# Returns once IDLE_SECONDS pass with no finger-down. Any touch
+# restarts the timer. IDLE_SECONDS=0 means "don't wait".
+# ------------------------------------------------------------
+
+wait_for_idle() {
+
+    [ "$IDLE_SECONDS" -gt 0 ] 2>/dev/null || return 0
+
+    while :; do
+
+        # Background + wait so a stop signal is handled immediately.
+        timeout "$IDLE_SECONDS" /usr/bin/lua "$TOUCH" >/dev/null 2>&1 &
+        wait $!
+        RC=$?
+
+        if [ "$RC" -eq 0 ]; then
+            log "touch - idle timer reset"
+            continue
+        fi
+
+        # 124 / 143: timeout ended the helper -> nobody touched for
+        # IDLE_SECONDS.
+        if [ "$RC" -eq 124 ] || [ "$RC" -eq 143 ]; then
+            log "${IDLE_SECONDS}s idle"
+            return 0
+        fi
+
+        # Anything else means the helper itself failed. Don't spin:
+        # wait out the interval, then treat it as idle.
+        log "touch helper failed (RC=$RC); treating as idle after ${IDLE_SECONDS}s"
+        sleep "$IDLE_SECONDS"
+        return 0
+    done
+}
+
+
+# ------------------------------------------------------------
+# ANIMATION RUNNING (custom owns the display)
+#
+# Returns 0 on a real touch, 1 if the player keeps crashing.
+# Also restarts the player if it dies (up to 3 times).
+# ------------------------------------------------------------
+
+run_animation() {
+
+    RESTARTS=0
+
+    while :; do
+
+        /usr/bin/lua "$TOUCH" >/dev/null 2>&1 &
+        TOUCH_PID=$!
+
+        # Watch both processes: the touch helper (exits on a touch)
+        # and the player (should never exit).
+        while alive "$TOUCH_PID" && alive "$PLAYER_PID"; do
+            sleep 1
+        done
+
+        if alive "$TOUCH_PID"; then
+
+            # We left the loop because the player died.
+            kill "$TOUCH_PID" 2>/dev/null || true
+            wait "$TOUCH_PID" 2>/dev/null || true
+
+            RESTARTS=$((RESTARTS+1))
+
+            log "player died (see /tmp/be3600-player.log), restart $RESTARTS/3"
+
+            if [ "$RESTARTS" -gt 3 ]; then
+                log "player keeps dying; giving up, returning to stock"
+                return 1
+            fi
+
+            start_custom || return 1
+
+            continue
+        fi
+
+        wait "$TOUCH_PID"
+        RC=$?
+
+        if [ "$RC" -eq 0 ]; then
+            log "touch while animation active"
+            return 0
+        fi
+
+        log "touch helper exited RC=$RC; retrying"
+        sleep 1
+    done
+}
+
+
+# ------------------------------------------------------------
+# CLEAN EXIT
+# ------------------------------------------------------------
+
+cleanup() {
+
+    [ "$CLEANED" = 1 ] && return
+    CLEANED=1
+
+    log "supervisor stopping"
+
+    kill_touch
+    start_stock
+
+    rm -f "$PIDFILE"
+}
+
+trap 'cleanup; exit 0' INT TERM HUP
+trap cleanup EXIT
+
+
+# ------------------------------------------------------------
+# MAIN LOOP
+# ------------------------------------------------------------
+
+start_stock
+
+while :; do
+
+    wait_for_idle
+
+    if start_custom; then
+
+        run_animation
+
+        kill_touch
+        start_stock
+
+        /bin/usleep 350000
+
+    else
+
+        # start_custom already put stock back; don't spin.
+        sleep 5
+    fi
+
+done

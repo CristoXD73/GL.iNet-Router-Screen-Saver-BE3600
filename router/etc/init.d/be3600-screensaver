@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+# procd service for the BE3600 animation screensaver.
+
+USE_PROCD=1
+START=99
+STOP=10
+
+start_service() {
+    procd_open_instance
+    procd_set_param command /usr/bin/be3600-screensaver
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}
+
+stop_service() {
+    # Safety net: the custom renderer must be gone before the stock
+    # screen comes back, even if the supervisor is slow to react.
+    for PID in $(ps w | grep '[b]e3600-player.lua' | awk '{print $1}'); do
+        kill "$PID" 2>/dev/null || true
+    done
+
+    for PID in $(ps w | grep '[b]e3600-wait-touch.lua' | awk '{print $1}'); do
+        kill "$PID" 2>/dev/null || true
+    done
+
+    /bin/usleep 200000
+
+    /etc/init.d/gl_screen restart >/dev/null 2>&1 || true
+}
