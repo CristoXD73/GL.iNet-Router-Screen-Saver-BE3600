@@ -113,6 +113,53 @@ display_ok() {
 
 
 # ------------------------------------------------------------
+# FIRMWARE-CHANGE PROBE
+#
+# The firmware version this was last verified on is remembered in
+# /etc/be3600-screen/verified. When the firmware (or kernel) is different, for
+# example after a sysupgrade that kept settings, the display and touchscreen are
+# probed BEFORE the display is taken over. If the probe fails, the stock screen
+# is left alone and the problem is logged. The probe is repeated every minute,
+# so a later fix (or running the installer again) is picked up by itself.
+# ------------------------------------------------------------
+
+STAMP="/etc/be3600-screen/verified"
+
+fingerprint() {
+    echo "$(cat /etc/glversion 2>/dev/null || echo unknown-firmware) kernel-$(uname -r)"
+}
+
+# Prints why the probe failed (and returns 1), or prints nothing and returns 0.
+probe() {
+    display_ok || { echo "front display is not 76x284 / 16bpp / 152-byte stride"; return 1; }
+    [ -x /etc/init.d/gl_screen ] || { echo "/etc/init.d/gl_screen is missing (the stock screen service moved?)"; return 1; }
+    WHICH="$(/usr/bin/lua "$TOUCH" --which 2>/dev/null)"
+    [ -r "${WHICH%% *}" ] || { echo "touch device not found (${WHICH:-none})"; return 1; }
+    return 0
+}
+
+# 0 = safe to take over the display, 1 = leave the stock screen alone.
+verify_firmware() {
+    FP="$(fingerprint)"
+    KNOWN="$(cat "$STAMP" 2>/dev/null)"
+
+    if [ "$KNOWN" = "$FP" ]; then
+        display_ok || { REASON="front display is not 76x284 / 16bpp / 152-byte stride"; return 1; }
+        return 0
+    fi
+
+    if REASON="$(probe)"; then
+        [ -n "$KNOWN" ] && log "firmware changed ($KNOWN -> $FP); compatibility probe passed"
+        mkdir -p "$(dirname "$STAMP")"
+        echo "$FP" > "$STAMP.new" && mv "$STAMP.new" "$STAMP"
+        return 0
+    fi
+
+    return 1
+}
+
+
+# ------------------------------------------------------------
 # PROCESS CONTROL
 # ------------------------------------------------------------
 
@@ -340,9 +387,10 @@ while :; do
 
     refresh_lock
 
-    if ! display_ok; then
+    REASON=""
+    if ! verify_firmware; then
         if [ "$WARNED" != 1 ]; then
-            log "front display is not 76x284 / 16bpp / 152-byte stride (firmware change?); leaving the stock screen alone"
+            log "compatibility probe failed: $REASON; leaving the stock screen alone (checking again every minute)"
             WARNED=1
         fi
         sleep 60

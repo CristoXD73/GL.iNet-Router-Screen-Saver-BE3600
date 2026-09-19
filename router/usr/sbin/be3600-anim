@@ -8,6 +8,9 @@
 #   be3600-anim set FILE.bea  validate FILE and make it the active animation
 #   be3600-anim check         validate the active animation and show its length
 #   be3600-anim doctor        check the display, touchscreen, animation and service
+#   be3600-anim preview [FILE.bea] [SECONDS]
+#                             play FILE (default: the active one) for SECONDS (default 10),
+#                             then restore everything; installs nothing
 
 SVC="/etc/init.d/be3600-screensaver"
 BEA="/etc/be3600-screen/active.bea"
@@ -16,7 +19,7 @@ TOUCH="/usr/bin/be3600-wait-touch.lua"
 LOCKDIR="/tmp/be3600-screen.lock"
 
 usage() {
-    sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -46,7 +49,16 @@ doctor() {
     echo "Router"
     MODEL="$(cat /tmp/sysinfo/model 2>/dev/null)"
     ok "model: ${MODEL:-unknown}"
-    ok "firmware: $(cat /etc/glversion 2>/dev/null || echo unknown)   $(uname -r)"
+    FP="$(cat /etc/glversion 2>/dev/null || echo unknown-firmware) kernel-$(uname -r)"
+    ok "firmware: $FP"
+    KNOWN="$(cat /etc/be3600-screen/verified 2>/dev/null)"
+    if [ "$KNOWN" = "$FP" ]; then
+        ok "this firmware has passed the compatibility probe"
+    elif [ -z "$KNOWN" ]; then
+        warn "not verified yet (the supervisor probes the display on its next start)"
+    else
+        warn "firmware changed since it was last verified ($KNOWN); the supervisor re-probes on its own"
+    fi
 
     echo
     echo "Display"
@@ -138,6 +150,62 @@ doctor() {
     return 0
 }
 
+# Play FILE on the screen for SECS seconds (or until a touch), then put everything
+# back exactly as it was. Nothing is installed or changed.
+preview() {
+    FILE="${1:-$BEA}"
+    SECS="${2:-10}"
+
+    [ -f "$FILE" ] || { echo "no such file: $FILE"; return 1; }
+    case "$SECS" in ''|*[!0-9]*) echo "seconds must be a whole number"; return 1 ;; esac
+    if [ "$SECS" -lt 1 ] || [ "$SECS" -gt 600 ]; then echo "seconds must be 1 to 600"; return 1; fi
+    lua "$CHECK" "$FILE" || return 1
+
+    WAS_RUNNING=0
+    if running; then WAS_RUNNING=1; fi
+    PREVIEW_PID=""
+    TOUCH_PID=""
+
+    restore() {
+        [ -n "$PREVIEW_PID" ] && kill "$PREVIEW_PID" 2>/dev/null
+        [ -n "$TOUCH_PID" ] && kill "$TOUCH_PID" 2>/dev/null
+        PREVIEW_PID=""
+        TOUCH_PID=""
+        if [ "$WAS_RUNNING" -eq 1 ]; then
+            "$SVC" start
+        else
+            /etc/init.d/gl_screen restart >/dev/null 2>&1 || true
+        fi
+    }
+    trap 'restore; exit 130' INT TERM HUP
+
+    # The supervisor must stop first (it would fight us for the screen); stopping
+    # it brings gl_screen back, so stop that too before drawing.
+    [ "$WAS_RUNNING" -eq 1 ] && "$SVC" stop
+    /etc/init.d/gl_screen stop >/dev/null 2>&1 || true
+    /bin/usleep 300000
+    echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
+
+    lua /usr/bin/be3600-player.lua "$FILE" >/tmp/be3600-preview.log 2>&1 &
+    PREVIEW_PID=$!
+    lua "$TOUCH" >/dev/null 2>&1 &
+    TOUCH_PID=$!
+
+    echo "previewing $FILE for $SECS s (touch the screen to stop early)..."
+    T=0
+    LIMIT=$((SECS * 2))          # checked every half second
+    while [ "$T" -lt "$LIMIT" ]; do
+        /bin/usleep 500000
+        T=$((T + 1))
+        if ! kill -0 "$PREVIEW_PID" 2>/dev/null; then echo "the player stopped (see /tmp/be3600-preview.log)"; break; fi
+        if ! kill -0 "$TOUCH_PID" 2>/dev/null; then echo "touch: stopping early"; break; fi
+    done
+
+    restore
+    trap - INT TERM HUP
+    echo "done; the screen is back as it was."
+}
+
 case "$1" in
 
 on)
@@ -186,6 +254,10 @@ check)
 
 doctor)
     doctor
+    ;;
+
+preview)
+    preview "$2" "$3"
     ;;
 
 *)
