@@ -93,6 +93,21 @@ does the same.) Windows may warn about the downloaded `.cmd`; choose *Keep* and 
 **Connected, but the slots say "Empty" and it isn't right?** Close Studio Link and start it
 again; it says "no router password" on the page if it was started without one.
 
+**The password keeps being asked?** Say yes to *Remember this computer* the first time
+and it never asks again. The remembered login is a key file in
+`%LOCALAPPDATA%\be3600-screensaver\studio-key` (Mac/Linux: `~/.config/be3600-screensaver/studio-key`).
+To undo it, run `Studio-Link.cmd -Forget` (`python3 studio-link.py --forget`), which also
+removes the key from the router. If the router was reset, Studio Link notices and asks for
+the password again.
+
+**It says the router does not have the screen saver, or offers an update?** Press Enter.
+Studio Link carries the screen saver's files and installs them; your settings and
+animations are kept. Answering N skips it (Motion Studio then can't show or change
+animations until it is installed).
+
+**"That device is not a GL-BE3600"?** The address it found belongs to another router.
+Start it with the right one: `Studio-Link.cmd -Router 192.168.x.x`.
+
 Still not connecting?
 
 * **Your browser asked about "devices on your local network"** and you said no. Allow

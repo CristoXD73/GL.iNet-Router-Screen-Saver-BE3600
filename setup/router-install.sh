@@ -96,6 +96,12 @@ else
 fi
 echo "  installed be3600-anim, be3600-uninstall and the screensaver service"
 
+# Studio Link passes the version of what it is installing, so it can tell later whether
+# the router is up to date.
+if [ -n "${BE3600_VERSION:-}" ]; then
+    echo "$BE3600_VERSION" > /etc/be3600-screen/version
+fi
+
 # Keep everything across a "keep settings" firmware upgrade (standard OpenWrt list).
 touch /etc/sysupgrade.conf
 KEEP="/usr/bin/be3600-screensaver /usr/bin/be3600-player /usr/bin/be3600-player.lua/usr/bin/be3600-wait-touch.lua /usr/bin/be3600-bea-check.lua /usr/sbin/be3600-anim /usr/sbin/be3600-uninstall /etc/init.d/be3600-screensaver /etc/be3600-screen /etc/rc.d/S99be3600-screensaver /etc/rc.d/K10be3600-screensaver"
