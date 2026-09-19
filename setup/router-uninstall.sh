@@ -30,6 +30,7 @@ rm -f /tmp/be3600-screen.pid /tmp/be3600-player.log
 
 echo "Removing files..."
 rm -f /usr/bin/be3600-screensaver \
+      /usr/bin/be3600-player \
       /usr/bin/be3600-player.lua \
       /usr/bin/be3600-wait-touch.lua \
       /usr/bin/be3600-bea-check.lua \
@@ -43,6 +44,7 @@ echo "Removing entries from /etc/sysupgrade.conf..."
 if [ -f /etc/sysupgrade.conf ]; then
     grep -vxF -e "# be3600-screensaver" \
               -e "/usr/bin/be3600-screensaver" \
+              -e "/usr/bin/be3600-player" \
               -e "/usr/bin/be3600-player.lua" \
               -e "/usr/bin/be3600-wait-touch.lua" \
               -e "/usr/bin/be3600-bea-check.lua" \

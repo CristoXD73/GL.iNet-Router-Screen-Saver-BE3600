@@ -68,6 +68,21 @@ put 755 usr/bin/be3600-bea-check.lua
 put 755 usr/sbin/be3600-anim
 put 755 etc/init.d/be3600-screensaver
 
+# The native player (exact timing, almost no CPU) is a static aarch64 binary. The
+# Lua player above is the fallback for anything else, or if the binary won't run.
+if [ "$(uname -m)" = "aarch64" ] && [ -f "$SRC/usr/bin/be3600-player" ]; then
+    put 755 usr/bin/be3600-player
+    if /usr/bin/be3600-player --version >/dev/null 2>&1; then
+        echo "  installed the native player"
+    else
+        rm -f /usr/bin/be3600-player
+        echo "  the native player does not run on this router; using the Lua player"
+    fi
+else
+    rm -f /usr/bin/be3600-player
+    echo "  using the Lua player (the native one is for aarch64 routers)"
+fi
+
 # The removal script, so uninstalling later is just:  be3600-uninstall
 cp "$HERE/router-uninstall.sh" /usr/sbin/be3600-uninstall.new
 chmod 755 /usr/sbin/be3600-uninstall.new
@@ -83,7 +98,7 @@ echo "  installed be3600-anim, be3600-uninstall and the screensaver service"
 
 # Keep everything across a "keep settings" firmware upgrade (standard OpenWrt list).
 touch /etc/sysupgrade.conf
-KEEP="/usr/bin/be3600-screensaver /usr/bin/be3600-player.lua /usr/bin/be3600-wait-touch.lua /usr/bin/be3600-bea-check.lua /usr/sbin/be3600-anim /usr/sbin/be3600-uninstall /etc/init.d/be3600-screensaver /etc/be3600-screen /etc/rc.d/S99be3600-screensaver /etc/rc.d/K10be3600-screensaver"
+KEEP="/usr/bin/be3600-screensaver /usr/bin/be3600-player /usr/bin/be3600-player.lua/usr/bin/be3600-wait-touch.lua /usr/bin/be3600-bea-check.lua /usr/sbin/be3600-anim /usr/sbin/be3600-uninstall /etc/init.d/be3600-screensaver /etc/be3600-screen /etc/rc.d/S99be3600-screensaver /etc/rc.d/K10be3600-screensaver"
 grep -qxF "# be3600-screensaver" /etc/sysupgrade.conf || echo "# be3600-screensaver" >> /etc/sysupgrade.conf
 for P in $KEEP; do
     grep -qxF "$P" /etc/sysupgrade.conf || echo "$P" >> /etc/sysupgrade.conf

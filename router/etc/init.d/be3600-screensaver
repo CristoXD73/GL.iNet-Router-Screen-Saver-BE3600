@@ -19,7 +19,7 @@ start_service() {
 stop_service() {
     # Safety net: the custom renderer must be gone before the stock
     # screen comes back, even if the supervisor is slow to react.
-    for PID in $(ps w | grep '[b]e3600-player.lua' | awk '{print $1}'); do
+    for PID in $(ps w | grep '[b]e3600-player' | awk '{print $1}'); do
         kill "$PID" 2>/dev/null || true
     done
 
