@@ -15,14 +15,18 @@
 CONF="/etc/be3600-screen/config"
 ANIMATION="/etc/be3600-screen/active.bea"
 IDLE_SECONDS=10
-PIDFILE="/tmp/be3600-screen.pid"
+TOUCH_DEVICE=""          # empty = find the touchscreen automatically
+LOCKDIR="/tmp/be3600-screen.lock"
 PLAYER="/usr/bin/be3600-player.lua"
 TOUCH="/usr/bin/be3600-wait-touch.lua"
 
+# shellcheck source=/dev/null
 [ -r "$CONF" ] && . "$CONF"
+export TOUCH_DEVICE
 
 PLAYER_PID=""
 CLEANED=0
+WARNED=0
 
 
 log() {
@@ -40,23 +44,72 @@ alive() {
 }
 
 
+# True if the PID is alive AND really is a be3600-screensaver. A stale lock could
+# otherwise point at a recycled PID that now belongs to some unrelated process.
+is_supervisor() {
+    alive "$1" &&
+    tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q 'be3600-screensaver'
+}
+
+
 # ------------------------------------------------------------
 # SINGLE SUPERVISOR ONLY
+#
+# mkdir is atomic, so two supervisors starting at the same moment cannot both
+# win the way they could with a "check the PID file, then write it" scheme.
 # ------------------------------------------------------------
 
-if [ -f "$PIDFILE" ]; then
+acquire_lock() {
 
-    OLD="$(cat "$PIDFILE" 2>/dev/null)"
-
-    if alive "$OLD"; then
-        log "supervisor already running PID=$OLD"
-        exit 1
+    if mkdir "$LOCKDIR" 2>/dev/null; then
+        echo $$ > "$LOCKDIR/pid"
+        return 0
     fi
 
-    rm -f "$PIDFILE"
-fi
+    OLD="$(cat "$LOCKDIR/pid" 2>/dev/null)"
 
-echo $$ > "$PIDFILE"
+    if [ -z "$OLD" ]; then
+        # The winner may not have written its PID yet; give it a moment.
+        /bin/usleep 200000
+        OLD="$(cat "$LOCKDIR/pid" 2>/dev/null)"
+    fi
+
+    if is_supervisor "$OLD"; then
+        log "supervisor already running PID=$OLD"
+        return 1
+    fi
+
+    # Stale lock: the previous supervisor died without cleaning up.
+    rm -rf "$LOCKDIR"
+    mkdir "$LOCKDIR" 2>/dev/null || return 1
+    echo $$ > "$LOCKDIR/pid"
+    return 0
+}
+
+acquire_lock || exit 1
+
+# If something clears /tmp/be3600-screen.lock while we run, put it back so the
+# single-supervisor guarantee (and be3600-anim status) keeps working.
+refresh_lock() {
+    [ -d "$LOCKDIR" ] && return 0
+    mkdir "$LOCKDIR" 2>/dev/null && echo $$ > "$LOCKDIR/pid"
+}
+
+
+# ------------------------------------------------------------
+# DISPLAY COMPATIBILITY GUARD
+#
+# The animation format is one raw 76x284, 16bpp, 152-byte-stride frame. If a
+# firmware update changes the display layout, taking over /dev/fb0 would draw
+# garbage, so in that case the stock screen is left alone.
+# ------------------------------------------------------------
+
+display_ok() {
+    FB="/sys/class/graphics/fb0"
+    [ "$(cat "$FB/virtual_size" 2>/dev/null)" = "76,284" ] &&
+    [ "$(cat "$FB/bits_per_pixel" 2>/dev/null)" = "16" ] &&
+    [ "$(cat "$FB/stride" 2>/dev/null)" = "152" ]
+}
 
 
 # ------------------------------------------------------------
@@ -215,6 +268,7 @@ run_animation() {
         # Watch both processes: the touch helper (exits on a touch)
         # and the player (should never exit).
         while alive "$TOUCH_PID" && alive "$PLAYER_PID"; do
+            refresh_lock
             sleep 1
         done
 
@@ -266,7 +320,7 @@ cleanup() {
     kill_touch
     start_stock
 
-    rm -f "$PIDFILE"
+    rm -rf "$LOCKDIR"
 }
 
 trap 'cleanup; exit 0' INT TERM HUP
@@ -279,7 +333,22 @@ trap cleanup EXIT
 
 start_stock
 
+TOUCH_NAME="$(/usr/bin/lua "$TOUCH" --which 2>/dev/null)"
+log "touchscreen: ${TOUCH_NAME:-unknown}"
+
 while :; do
+
+    refresh_lock
+
+    if ! display_ok; then
+        if [ "$WARNED" != 1 ]; then
+            log "front display is not 76x284 / 16bpp / 152-byte stride (firmware change?); leaving the stock screen alone"
+            WARNED=1
+        fi
+        sleep 60
+        continue
+    fi
+    WARNED=0
 
     wait_for_idle
 

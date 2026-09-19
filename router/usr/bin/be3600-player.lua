@@ -14,6 +14,18 @@ local PACK =
 
 local FRAME_BYTES = 43168
 
+-- Test hooks (unused in normal operation):
+--   BE3600_FB     framebuffer path; point it at an ordinary file to test on a PC
+--   BE3600_LOOPS  exit after this many complete passes instead of looping forever
+local FB_PATH =
+    os.getenv("BE3600_FB") or
+    "/dev/fb0"
+
+local MAX_LOOPS =
+    tonumber(os.getenv("BE3600_LOOPS") or "")
+
+local loops = 0
+
 
 local function u16(s,p)
 
@@ -128,7 +140,7 @@ while true do
         local fb =
             assert(
                 io.open(
-                    "/dev/fb0",
+                    FB_PATH,
                     "wb"
                 )
             )
@@ -148,5 +160,11 @@ while true do
                 delay * run
             )
         )
+    end
+
+    loops = loops + 1
+
+    if MAX_LOOPS and loops >= MAX_LOOPS then
+        os.exit(0)
     end
 end

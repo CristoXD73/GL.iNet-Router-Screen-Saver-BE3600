@@ -6,3 +6,8 @@ ANIMATION="/etc/be3600-screen/active.bea"
 
 # Seconds without a touch before the animation starts (0 = immediately).
 IDLE_SECONDS=10
+
+# Touchscreen device. Leave empty to find it automatically (the input device
+# whose name contains "touch"); set it only if autodetection picks the wrong one,
+# e.g. TOUCH_DEVICE="/dev/input/event1".
+TOUCH_DEVICE=""

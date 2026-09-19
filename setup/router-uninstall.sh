@@ -15,13 +15,17 @@ echo "Stopping and disabling the service..."
 /etc/init.d/be3600-screensaver disable >/dev/null 2>&1
 
 # Belt and braces: make sure nothing is still drawing to the display.
-if [ -f /tmp/be3600-screen.pid ]; then
-    kill "$(cat /tmp/be3600-screen.pid 2>/dev/null)" 2>/dev/null
+# Only kill the PID in the lock if it really is a be3600-screensaver (a stale
+# lock could hold a PID that has since been recycled by another process).
+LOCKPID="$(cat /tmp/be3600-screen.lock/pid 2>/dev/null)"
+if [ -n "$LOCKPID" ] && tr '\0' ' ' < "/proc/$LOCKPID/cmdline" 2>/dev/null | grep -q 'be3600-screensaver'; then
+    kill "$LOCKPID" 2>/dev/null
 fi
-for PID in $(ps w | grep -E '[b]e3600-player.lua|[b]e3600-wait-touch.lua' | awk '{print $1}'); do
+for PID in $(ps w | grep -E '[b]e3600-player|[b]e3600-wait-touch.lua' | awk '{print $1}'); do
     kill "$PID" 2>/dev/null
 done
 sleep 1
+rm -rf /tmp/be3600-screen.lock
 rm -f /tmp/be3600-screen.pid /tmp/be3600-player.log
 
 echo "Removing files..."

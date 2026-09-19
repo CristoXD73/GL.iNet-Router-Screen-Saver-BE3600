@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scripts:
+    name: Shell, Lua and animation-format tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua 5.1 and ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 shellcheck
+
+      - name: ShellCheck
+        run: >
+          shellcheck install.sh set-animation.sh setup/*.sh
+          router/usr/bin/be3600-screensaver router/usr/sbin/be3600-anim
+          router/etc/init.d/be3600-screensaver
+
+      - name: Lua syntax
+        run: |
+          for f in router/usr/bin/*.lua; do
+            lua5.1 -e "assert(loadfile('$f'))" && echo "ok  $f"
+          done
+
+      - name: Tests
+        run: LUA=lua5.1 sh tests/run.sh
+
+  windows:
+    name: Windows scripts parse and stay ASCII
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse the PowerShell scripts
+        shell: powershell
+        run: |
+          $bad = 0
+          foreach ($f in Get-ChildItem tools -Filter *.ps1) {
+            $errs = $null
+            [void][System.Management.Automation.PSParser]::Tokenize((Get-Content $f.FullName -Raw), [ref]$errs)
+            if ($errs.Count) { $bad++; $errs | ForEach-Object { "$($f.Name): $($_.Message)" } } else { "ok  $($f.Name)" }
+          }
+          if ($bad) { exit 1 }
+
+      - name: Windows scripts must be ASCII (Windows PowerShell 5.1 misreads UTF-8 without a BOM)
+        shell: powershell
+        run: |
+          $bad = 0
+          foreach ($f in Get-ChildItem -Recurse -Include *.ps1,*.cmd) {
+            if ([IO.File]::ReadAllBytes($f.FullName) | Where-Object { $_ -gt 127 }) { $bad++; "non-ASCII: $($f.FullName)" }
+          }
+          if ($bad) { exit 1 } else { "all ASCII" }

@@ -46,10 +46,19 @@ echo "  ok"
 echo
 echo "[2/4] Installing the screensaver"
 
-put() {   # put MODE RELATIVE_PATH
+# An older version may be running (upgrade). Stop it BEFORE replacing its files:
+# a shell reads its script incrementally, so rewriting the file under a running
+# supervisor can send it off into the middle of the new file.
+if [ -x /etc/init.d/be3600-screensaver ]; then
+    /etc/init.d/be3600-screensaver stop >/dev/null 2>&1 || true
+    sleep 1
+fi
+
+put() {   # put MODE RELATIVE_PATH   (atomic: copy beside it, then rename into place)
     mkdir -p "$(dirname "/$2")"
-    cp "$SRC/$2" "/$2"
-    chmod "$1" "/$2"
+    cp "$SRC/$2" "/$2.new"
+    chmod "$1" "/$2.new"
+    mv "/$2.new" "/$2"
 }
 
 put 755 usr/bin/be3600-screensaver
@@ -60,8 +69,9 @@ put 755 usr/sbin/be3600-anim
 put 755 etc/init.d/be3600-screensaver
 
 # The removal script, so uninstalling later is just:  be3600-uninstall
-cp "$HERE/router-uninstall.sh" /usr/sbin/be3600-uninstall
-chmod 755 /usr/sbin/be3600-uninstall
+cp "$HERE/router-uninstall.sh" /usr/sbin/be3600-uninstall.new
+chmod 755 /usr/sbin/be3600-uninstall.new
+mv /usr/sbin/be3600-uninstall.new /usr/sbin/be3600-uninstall
 
 mkdir -p /etc/be3600-screen
 if [ -f /etc/be3600-screen/config ]; then

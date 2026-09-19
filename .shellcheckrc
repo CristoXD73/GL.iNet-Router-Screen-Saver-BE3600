@@ -1,0 +1,5 @@
+shell=sh
+
+# SC2009: "use pgrep instead of grepping ps". Deliberate: pgrep is not installed
+# on stock OpenWrt/BusyBox images, and the scripts must run there unmodified.
+disable=SC2009
