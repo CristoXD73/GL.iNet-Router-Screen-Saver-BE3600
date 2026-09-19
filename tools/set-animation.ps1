@@ -60,6 +60,12 @@ while ($true) {
         continue
     }
     Write-Ok ('{0} frames, {1} fps, {2:N1} s per loop, {3}' -f $info.Frames, $info.Fps, $info.Seconds, (Format-Size $info.Bytes))
+    if ($info.Seconds -gt 25) {
+        Write-Bad ('It loops for {0:N1} seconds; the limit is 25 seconds.' -f $info.Seconds)
+        Write-Info 'Make it shorter, or lower its length in the Studio, and try again.'
+        $Path = $null
+        continue
+    }
 
     if (-not $ip) {
         Write-Step 'find' 'Finding your router'
@@ -74,7 +80,12 @@ while ($true) {
     ) 'Yellow'
     Write-Host ''
 
-    $remote = 'cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea && rm -f /tmp/be3600-new.bea'
+    # The file's name (letters, digits . _ - only, so it is safe in a shell command)
+    # becomes its name in the router's library.
+    $libName = ([System.IO.Path]::GetFileNameWithoutExtension($name) -replace '[^A-Za-z0-9._-]+', '-').Trim('-')
+    if (-not $libName) { $libName = 'animation' }
+    if ($libName.Length -gt 40) { $libName = $libName.Substring(0, 40) }
+    $remote = "cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea $libName && rm -f /tmp/be3600-new.bea"
     $code = Invoke-RouterSsh -Router $ip -Remote $remote -InputFile $Path -Key $Key
 
     Write-Host ''

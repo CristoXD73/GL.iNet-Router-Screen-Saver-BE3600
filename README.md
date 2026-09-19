@@ -92,10 +92,11 @@ uploaded.
 
 * **Atmosphere:** six slow, full-screen colour scenes (Silk, Tide, Orbit, Halo, Mesh, Cells).
 * **Robot Eyes:** a library of animated eyes with 24 expressions.
-* **Optimizer:** shows what an animation costs before you save it.
+* **Optimizer:** picks the device speed and turns your animation into a file.
 
-Click **Save**, and it downloads a file called `be3600-active.bea`. Then put it
-on the router:
+When you like it, open **Optimizer** and click **Compile BE3600 Pack**. It asks
+how long the loop should be (1 to 25 seconds), then downloads a small file called
+`be3600-active.bea`. Then put it on the router:
 
 * **Windows:** drag the file onto **`Set-Animation.cmd`**. (Or double-click
   `Set-Animation.cmd` and drag the file into the window that opens.)
@@ -104,16 +105,24 @@ on the router:
 The tool checks the file first and tells you in plain words if something is
 wrong, then sends it to the router. You can drop several files in a row.
 
+**The router keeps up to 3 animations**, so you can switch back to one later,
+and the one you replace is saved automatically. **Each may loop for at most 25
+seconds**, which keeps everything small and safe. To switch or tidy up, use the
+commands in the terminal (`be3600-anim list`, `use NAME`, `remove NAME`; see
+[all commands](#turn-it-off-or-remove-it)). A file named `sunset.bea` is saved
+as `sunset`.
+
 <details>
 <summary><b>Smaller files, and making animations without the Studio</b></summary>
 
-An animation is a `.bea` file. The Studio saves the plain kind (`BEA1`), which
-stores every frame in full. `tools/bea2.py` converts to a compact kind (`BEA2`)
-that stores only what changes, usually **10x or more smaller**, and back again
-without losing anything:
+An animation is a `.bea` file. There are two kinds: `BEA1` stores every frame
+in full, and `BEA2` stores only what changes, usually **10x or more smaller**.
+**The Studio already saves the small kind (`BEA2`)**, so its files need no
+conversion. If you have an older full-size file (`BEA1`), `tools/bea2.py`
+shrinks it, and converts back again, without losing anything:
 
 ```sh
-python3 tools/bea2.py encode be3600-active.bea smaller.bea
+python3 tools/bea2.py encode old-file.bea smaller.bea
 ```
 
 To see a file as a GIF: `python3 tools/make-preview-gif.py file.bea preview.gif`
@@ -143,7 +152,10 @@ Either way, the normal GL.iNet screen is put back exactly as it was.
 | `be3600-anim on` | Turn it on now and after every restart. |
 | `be3600-anim off` | Turn it off and restore the normal screen. |
 | `be3600-anim status` | Is it on, who is drawing on the screen, and which animation. |
-| `be3600-anim set FILE.bea` | Check `FILE.bea` and make it the animation. |
+| `be3600-anim set FILE.bea [NAME]` | Check `FILE.bea`, keep it in the library and play it. |
+| `be3600-anim list` | Show the saved animations (`*` marks the one playing). |
+| `be3600-anim use NAME` | Switch to a saved animation. |
+| `be3600-anim remove NAME` | Delete a saved animation (you can keep at most 3). |
 | `be3600-anim preview [FILE.bea] [SECONDS]` | Play an animation for a few seconds (default 10) without installing it, then restore everything. Touch to stop early. |
 | `be3600-anim check` | Check the current animation and show how long it is. |
 | `be3600-anim doctor` | Full health check. Run this first if something seems wrong. |

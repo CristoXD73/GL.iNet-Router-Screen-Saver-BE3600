@@ -1121,6 +1121,87 @@ function buildPack(records, fps) {
     return out;
 }
 
+// BEA2: the first frame in full, then only the byte ranges that changed. Same
+// picture as BEA1 but usually 10x or more smaller. Format: docs/BEA-FORMAT.md.
+// (Kept in step with tools/bea2.py, which converts either way.)
+function buildPackBea2(records, fps) {
+
+    const GAP = 12, FULL = 0, DELTA = 1, HOLD = 2;
+    const recs = [];
+    let prev = null;
+
+    for (const rec of records) {
+
+        const cur = rec.frame;
+
+        if (prev === null) {
+            recs.push({ run: rec.run, kind: FULL, payload: cur });
+            prev = cur;
+            continue;
+        }
+
+        const spans = [];
+        let i = 0;
+
+        while (i < FRAME_BYTES) {
+            if (prev[i] === cur[i]) { i++; continue; }
+            const start = i;
+            let last = i;
+            i++;
+            while (i < FRAME_BYTES && i - last <= GAP) {
+                if (prev[i] !== cur[i]) last = i;
+                i++;
+            }
+            spans.push([start, cur.subarray(start, last + 1)]);
+            i = last + 1;
+        }
+
+        if (spans.length === 0) {
+            const l = recs[recs.length - 1];
+            if (l.run + rec.run <= 65535) l.run += rec.run;
+            else recs.push({ run: rec.run, kind: HOLD, payload: new Uint8Array(0) });
+        } else {
+            let size = 2;
+            for (const s of spans) size += 6 + s[1].length;
+            if (size >= FRAME_BYTES) {
+                recs.push({ run: rec.run, kind: FULL, payload: cur });
+            } else {
+                const payload = new Uint8Array(size);
+                const dv = new DataView(payload.buffer);
+                dv.setUint16(0, spans.length, true);
+                let at = 2;
+                for (const s of spans) {
+                    dv.setUint32(at, s[0], true);
+                    dv.setUint16(at + 4, s[1].length, true);
+                    payload.set(s[1], at + 6);
+                    at += 6 + s[1].length;
+                }
+                recs.push({ run: rec.run, kind: DELTA, payload });
+            }
+        }
+        prev = cur;
+    }
+
+    let total = 12;
+    for (const r of recs) total += 7 + r.payload.length;
+
+    const out = new Uint8Array(total);
+    const dv = new DataView(out.buffer);
+    out.set([0x42, 0x45, 0x41, 0x32], 0);           // "BEA2"
+    dv.setUint16(4, fps, true);
+    dv.setUint16(6, recs.length, true);
+    dv.setUint32(8, FRAME_BYTES, true);
+
+    let pos = 12;
+    for (const r of recs) {
+        dv.setUint16(pos, r.run, true);
+        out[pos + 2] = r.kind;
+        dv.setUint32(pos + 3, r.payload.length, true);
+        out.set(r.payload, pos + 7);
+        pos += 7 + r.payload.length;
+    }
+    return out;
+}
 async function compileBE3600() {
 
     const button =
@@ -1138,7 +1219,7 @@ async function compileBE3600() {
     let seconds =
         Number(
             prompt(
-                "How many seconds should this loop contain?",
+                "How many seconds should this loop contain? (1 to 25)",
                 "5"
             )
         );
@@ -1147,7 +1228,7 @@ async function compileBE3600() {
         return;
 
     seconds =
-        Math.max(1,Math.min(30,seconds));
+        Math.max(1,Math.min(25,seconds));
 
     const total =
         Math.round(seconds * fps);
@@ -1230,8 +1311,7 @@ async function compileBE3600() {
             }
         }
 
-        const pack =
-            buildPack(records,fps);
+        const pack = buildPackBea2(records,fps);
 
         const blob =
             new Blob(
@@ -1280,7 +1360,7 @@ async function compileBE3600() {
             (rawFrames/1024/1024).toFixed(2) +
             " MiB\nPack: " +
             (pack.length/1024/1024).toFixed(2) +
-            " MiB\n\nSaved as:\n" +
+            " MiB (BEA2: only changes stored)\n\nSaved as:\n" +
             "be3600-active.bea"
         );
 
