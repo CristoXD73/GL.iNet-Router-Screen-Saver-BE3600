@@ -84,8 +84,14 @@ installer asks for the right address and tries again.
 ### The drop zone says "Studio Link is not running"
 
 Studio Link is the small helper that lets Motion Studio's drop zone send files to
-your router. Start it and leave its window open: double-click **`Studio-Link.cmd`**
-(macOS/Linux: `./studio-link.sh`). The square connects by itself within a few seconds.
+your router. Use the **Download Studio Link** buttons on the page (Windows: double-click
+the file; Mac/Linux: `python3 studio-link.py`), type your router password in its window,
+and leave the window open. The square connects by itself within a few seconds and then
+shows your router's three slots. (In a cloned repo, `Studio-Link.cmd` / `./studio-link.sh`
+does the same.) Windows may warn about the downloaded `.cmd`; choose *Keep* and *Run anyway*.
+
+**Connected, but the slots say "Empty" and it isn't right?** Close Studio Link and start it
+again; it says "no router password" on the page if it was started without one.
 
 Still not connecting?
 

@@ -82,6 +82,23 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
 .gif-empty:hover,.gif-empty:focus-visible,.preview.dragging-gif .gif-empty{background:rgba(5,6,8,.6);outline:2px dashed rgba(255,255,255,.7);outline-offset:-10px}
 #gifDock .effect-list button{min-width:44px}
 
+/* --- Your three slots, and getting Studio Link --- */
+.slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:10px}
+.slot{display:flex;flex-direction:column;gap:3px;min-width:0;min-height:78px;padding:11px;border-radius:14px;background:rgba(255,255,255,.55);box-shadow:inset 0 0 0 1px var(--line)}
+.slot.active{box-shadow:inset 0 0 0 2px #1fb655}
+.slot.empty{align-items:center;justify-content:center;text-align:center;gap:2px;color:var(--muted);background:transparent;box-shadow:none;border:2px dashed rgba(18,21,29,.2)}
+.slot.empty b{font-size:9px}
+.slot strong{font-size:10px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot small{display:block;font-size:8px;color:var(--muted)}
+.slot .badge{align-self:flex-start;font-size:7px;font-weight:800;letter-spacing:.1em;color:#178a41;background:rgba(31,182,85,.14);border-radius:999px;padding:2px 7px}
+.slot .acts{display:flex;gap:5px;margin-top:auto;padding-top:5px}
+.slot .acts button{height:24px;border:0;border-radius:8px;padding:0 9px;font-size:8px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.85);box-shadow:inset 0 0 0 1px var(--line);color:var(--text)}
+.slot .acts button.danger{color:#c0263f}
+.slot .acts button:disabled{opacity:.5;cursor:progress}
+.get-link{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+a.soft-btn{display:inline-flex;align-items:center;text-decoration:none;color:inherit}
+@media (max-width:640px){.slots{grid-template-columns:1fr}}
+
 @media (max-width:640px){.send-zone{grid-template-columns:1fr}.drop-square{width:100%;height:84px}}
 </style>
 </head>
@@ -312,6 +329,10 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
           <div class="eyebrow">Send to your router</div>
           <strong id="linkState"><i class="link-dot"></i>Checking for Studio Link...</strong>
           <small id="linkHelp"></small>
+          <div class="get-link hidden" id="getLink">
+            <a class="soft-btn" href="downloads/Studio-Link.cmd" download>Download Studio Link for Windows</a>
+            <a class="soft-btn" href="downloads/studio-link.py" download>Download for Mac / Linux</a>
+          </div>
           <div class="send-row hidden" id="sendRow">
             <input id="sendName" type="text" maxlength="40" placeholder="Name on the router" aria-label="Name on the router" value="my-animation">
             <button class="dark-btn" id="sendLast" type="button">Send what I just compiled</button>
@@ -319,6 +340,7 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
           <small id="sendResult"></small>
         </div>
       </div>
+      <div class="slots hidden" id="slots" aria-live="polite" aria-label="The animations on your router"></div>
 
     </section>
   </main>
@@ -1799,10 +1821,10 @@ console.log(
 </script>
 
 <script>
-/* Send to router: drop a .bea on the square and it goes to your router through
- * Studio Link, a small helper that runs on THIS computer (Studio-Link.cmd). The
- * page only ever talks to 127.0.0.1; your router password is typed into the
- * helper's own window, never into this page. */
+/* Send to router: drop a .bea on the square and it goes to your router through Studio
+ * Link, a small helper that runs on THIS computer (Studio-Link.cmd). The page only ever
+ * talks to 127.0.0.1; your router password is typed into the helper's own window, never
+ * into this page. Once connected, the router's three slots are shown here. */
 (function () {
   'use strict';
 
@@ -1810,9 +1832,10 @@ console.log(
   var $ = function (id) { return document.getElementById(id); };
   var square = $('dropSquare'), picker = $('beaPicker'), state = $('linkState'), help = $('linkHelp');
   var result = $('sendResult'), nameBox = $('sendName'), lastBtn = $('sendLast'), row = $('sendRow'), panel = $('optimizer');
+  var slots = $('slots'), getLink = $('getLink');
   if (!square || !panel) return;
 
-  var linkOk = false, busy = false, last = null;
+  var linkOk = false, loggedIn = false, busy = false, last = null, libLoaded = false, libBusy = false, linkSig = '';
 
   function setState(kind, text, helpText) {
     state.textContent = '';
@@ -1831,25 +1854,111 @@ console.log(
     return fetch(url, opts).finally(function () { clearTimeout(t); });
   }
 
+  function json(r) { return r.json().catch(function () { return { ok: false, message: 'Unexpected reply from Studio Link.' }; }); }
+
+  // ---- your three slots ------------------------------------------------------
+  function fmtSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function renderSlots(items, max) {
+    slots.textContent = '';
+    var n = Math.max(max || 3, items.length);
+    for (var i = 0; i < n; i++) {
+      var it = items[i], slot = el('div', 'slot' + (it ? (it.active ? ' active' : '') : ' empty'));
+      if (!it) {
+        slot.appendChild(el('b', '', 'Empty slot'));
+        slot.appendChild(el('small', '', 'Drop a .bea to fill it'));
+      } else {
+        slot.appendChild(el('strong', '', it.name));
+        slot.appendChild(el('small', '', it.seconds.toFixed(1) + ' s · ' + fmtSize(it.bytes)));
+        if (it.active) slot.appendChild(el('span', 'badge', 'PLAYING'));
+        var acts = el('div', 'acts');
+        if (!it.active) acts.appendChild(action('Play', it.name, 'use', false));
+        acts.appendChild(action('Remove', it.name, 'remove', true));
+        slot.appendChild(acts);
+      }
+      slots.appendChild(slot);
+    }
+    slots.classList.remove('hidden');
+  }
+
+  function action(label, name, verb, danger) {
+    var b = el('button', danger ? 'danger' : '', label);
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      if (busy) return;
+      if (verb === 'remove' && !window.confirm('Remove "' + name + '" from the router?')) return;
+      busy = true;
+      Array.prototype.forEach.call(slots.querySelectorAll('button'), function (x) { x.disabled = true; });
+      say('', (verb === 'use' ? 'Switching to "' : 'Removing "') + name + '"...');
+      timed(LINK + '/' + verb + '?name=' + encodeURIComponent(name), { method: 'POST', mode: 'cors' }, 60000)
+        .then(json)
+        .then(function (j) { say(j.ok ? 'ok' : 'err', j.message || (j.ok ? 'Done.' : 'That did not work.')); })
+        .catch(function () { say('err', 'Lost contact with Studio Link before it finished. Check its window.'); })
+        .finally(function () { busy = false; refreshLibrary(); });
+    });
+    return b;
+  }
+
+  function refreshLibrary() {
+    if (libBusy || !linkOk) return;
+    libBusy = true;
+    timed(LINK + '/library', { mode: 'cors' }, 30000)
+      .then(json)
+      .then(function (j) {
+        if (j.ok) { libLoaded = true; renderSlots(j.items || [], j.max); }
+        else if (j.busy) { libLoaded = false; }
+        else {
+          libLoaded = true; slots.classList.add('hidden');
+          say('err', j.message || 'Could not read the router.');
+        }
+      })
+      .catch(function () { libLoaded = false; })
+      .finally(function () { libBusy = false; });
+  }
+
+  // ---- finding Studio Link -----------------------------------------------------
   function checkLink() {
     if (busy) return;
     timed(LINK + '/ping', { mode: 'cors' }, 2000)
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || j.app !== 'be3600-studio-link') throw new Error('not Studio Link');
-        linkOk = true;
-        setState('on', 'Studio Link is connected',
-          j.dryRun ? 'Test mode: files are checked but not sent.' : 'Drop a .bea file on the square and it goes to your router.');
+        linkOk = true; loggedIn = !!j.loggedIn;
+        var sig = [j.router, j.dryRun, j.loggedIn].join('|');
+        if (sig !== linkSig) { linkSig = sig; libLoaded = false; }   // a different helper answered
+        getLink.classList.add('hidden');
+        if (j.dryRun) {
+          setState('on', 'Studio Link is connected (test mode)', 'Files are checked but not sent.');
+          if (!libLoaded) refreshLibrary();
+        } else if (loggedIn) {
+          setState('on', 'Connected' + (j.router ? ' to your router at ' + j.router : ''),
+            'Drop a .bea file on the square and it goes to your router.');
+          if (!libLoaded) refreshLibrary();
+        } else {
+          setState('on', 'Studio Link is running, but has no router password',
+            'Close it and start it again, and type the password when it asks. Until then it cannot show your animations, and each send asks in its window.');
+          slots.classList.add('hidden');
+        }
       })
       .catch(function () {
-        linkOk = false;
+        linkOk = false; loggedIn = false; libLoaded = false;
+        slots.classList.add('hidden');
         setState('bad', 'Studio Link is not running',
-          'Double-click Studio-Link.cmd in the project folder and leave its window open; this connects by itself. ' +
-          'If your browser asks about devices on your local network, choose Allow. ' +
-          'Or save the file and drag it onto Set-Animation.cmd instead.');
+          '1. Download it below.  2. Double-click it (Mac/Linux: run it with python3).  3. Type your router password in ' +
+          'its window when it asks, and leave it open. This page connects by itself. If your browser asks about ' +
+          'devices on your local network, choose Allow.');
+        getLink.classList.remove('hidden');
       });
   }
 
+  // ---- sending -----------------------------------------------------------------
   function checkBea(b) {
     if (b.length < 12) return 'That file is too small to be a .bea animation.';
     if (b.length > 32 * 1024 * 1024) return 'That file is far too big to be an animation.';
@@ -1869,21 +1978,19 @@ console.log(
   }
 
   function send(bytes, name) {
-    if (busy) { say('err', 'One at a time: wait for the current send to finish.'); return; }
+    if (busy) { say('err', 'One at a time: wait for the current job to finish.'); return; }
     var problem = checkBea(bytes);
     if (problem) { say('err', problem); return; }
     if (!linkOk) { say('err', 'Studio Link is not running yet (see above).'); checkLink(); return; }
 
     busy = true;
-    say('', 'Sending "' + name + '"... if the Studio Link window asks for your router password, type it there.');
+    say('', 'Sending "' + name + '"...' + (loggedIn ? '' : ' If the Studio Link window asks for your router password, type it there.'));
     timed(LINK + '/send?name=' + encodeURIComponent(name),
       { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes, mode: 'cors' }, 300000)
-      .then(function (r) {
-        return r.json().catch(function () { return { ok: false, message: 'Unexpected reply from Studio Link.' }; });
-      })
+      .then(json)
       .then(function (j) { say(j.ok ? 'ok' : 'err', j.message || (j.ok ? 'Sent.' : 'Not sent.')); })
       .catch(function () { say('err', 'Lost contact with Studio Link before it finished. Check its window.'); })
-      .finally(function () { busy = false; checkLink(); });
+      .finally(function () { busy = false; checkLink(); refreshLibrary(); });
   }
 
   function takeFile(file) {
@@ -1898,8 +2005,8 @@ console.log(
   });
   picker.addEventListener('change', function () { takeFile(picker.files[0]); picker.value = ''; });
 
-  // Dropping: while this panel is open, a file dropped anywhere on the page is
-  // taken (so a slightly missed drop does not make the browser open the file).
+  // Dropping: while this panel is open, a file dropped anywhere on the page is taken
+  // (so a slightly missed drop does not make the browser open the file).
   function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
   function panelOpen() { return !panel.classList.contains('hidden'); }
   var depth = 0;
@@ -1922,12 +2029,11 @@ console.log(
   });
 
   // Look for Studio Link now, whenever the panel opens, and every few seconds while open.
-  new MutationObserver(function () { if (panelOpen()) checkLink(); }).observe(panel, { attributes: true, attributeFilter: ['class'] });
+  new MutationObserver(function () { if (panelOpen()) { libLoaded = false; checkLink(); } }).observe(panel, { attributes: true, attributeFilter: ['class'] });
   setInterval(function () { if (panelOpen()) checkLink(); }, 3000);
   checkLink();
 })();
 </script>
-
 <script>
 /* GIF tab: bring in a GIF and the compiler fits it to the 284 x 76 strip.
  * Everything runs in your browser; the GIF is never uploaded. */
