@@ -92,10 +92,18 @@ makes a red/green/blue/white colour test and a scrolling rainbow.
 ## Motion Studio: make animations in your browser
 
 **[Open Motion Studio](https://cristoxd73.github.io/glinet-router-screensaver-be3600/studio/)**
-(or open [`studio/index.html`](studio/index.html) from a download). It runs in
-any browser, with no install, and nothing is uploaded. Pick a scene (Robot Eyes, Atmosphere, Rainbow, Text), adjust it
-with live preview, and click **Save .bea**. It can also open an existing `.bea`
-to preview it. Then drop the saved file on `Set-Animation.cmd` as above.
+(or open [`studio/index.html`](studio/index.html) from a download). It is a single
+page that runs in your browser: nothing to install, nothing uploaded.
+
+* **Atmosphere:** six slow, full-screen colour scenes (Silk, Tide, Orbit, Halo, Mesh, Cells).
+* **Robot Eyes:** a library of animated eyes with 24 expressions (Normal, Happy, Focus, Sleepy, Angry, Surprise and more).
+* **Optimizer:** picks the device frame rate and shows what the animation costs before you save it.
+
+Save the result (it downloads `be3600-active.bea`), then drop that file on
+`Set-Animation.cmd` as above. Its exporter writes the plain `BEA1` format; to shrink the file about 10x, run it through
+[`tools/bea2.py`](tools/bea2.py) (`python3 tools/bea2.py encode in.bea out.bea`).
+The Studio is built on Three.js and Vanta.js (both MIT) and eye designs inspired
+by other MIT projects; see [`studio/OPEN_SOURCE.md`](studio/OPEN_SOURCE.md).
 
 ## Everyday use
 
