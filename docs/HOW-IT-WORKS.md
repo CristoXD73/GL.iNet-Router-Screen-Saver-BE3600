@@ -1,5 +1,17 @@
 # How it works
 
+## In plain words
+
+The router's front screen is normally drawn by GL.iNet's own program. This
+project adds a small helper that watches the touchscreen. When nobody has
+touched it for a few seconds, the helper stops GL.iNet's program and plays your
+animation on the screen instead. When someone touches the screen, it stops the
+animation and starts GL.iNet's program again, so the normal screen is back
+instantly. It never lets the two draw at the same time, because that would
+scramble the picture.
+
+The rest of this page is for people who want the details.
+
 ## The two owners of the display
 
 The small front display of the GL-BE3600 is a single framebuffer (`/dev/fb0`,
@@ -17,7 +29,7 @@ guarantees **exactly one owner at a time**:
    no touch               the screen
              v                 |
         +--------------------------+
-        |  CUSTOM                  |   gl_screen stopped, be3600-player.lua
+        |  CUSTOM                  |   gl_screen stopped, be3600-player
         |  (your animation)        |   writing frames to /dev/fb0
         +--------------------------+
 ```
@@ -29,14 +41,16 @@ starting the incoming one.
 
 | File | Role |
 |------|------|
-| `/usr/bin/be3600-screensaver` | The supervisor. Runs the state machine above. |
-| `/usr/bin/be3600-player.lua`  | Reads a `.bea` file and loops it onto `/dev/fb0`. |
-| `/usr/bin/be3600-wait-touch.lua` | Blocks until a finger touches the screen, then exits 0. |
-| `/usr/bin/be3600-bea-check.lua` | Validates a `.bea` file and prints its loop length. |
-| `/usr/sbin/be3600-anim` | The user-facing control: `on`, `off`, `status`, `set`, `check`. |
+| `/usr/bin/be3600-screensaver` | The supervisor. Runs the state machine above. Only one can run at a time (an atomic lock in `/tmp/be3600-screen.lock`). |
+| `/usr/bin/be3600-player` | The native player: a small static aarch64 program that plays a `.bea` with exact timing. Source in `native/`. |
+| `/usr/bin/be3600-player.lua`  | The same job in Lua, used if the native player isn't installed. |
+| `/usr/bin/be3600-wait-touch.lua` | Finds the touchscreen and blocks until a finger touches it, then exits 0. |
+| `/usr/bin/be3600-bea-check.lua` | Validates a `.bea` file (`BEA1` or `BEA2`) and prints its loop length. |
+| `/usr/sbin/be3600-anim` | The user-facing control: `on`, `off`, `status`, `set`, `check`, `preview`, `doctor`. |
 | `/etc/init.d/be3600-screensaver` | A `procd` service that runs the supervisor at boot and respawns it if it dies. |
-| `/etc/be3600-screen/config` | `IDLE_SECONDS` and the animation path. |
+| `/etc/be3600-screen/config` | The settings (idle time, touch device, player). |
 | `/etc/be3600-screen/active.bea` | The animation that is played. |
+| `/etc/be3600-screen/verified` | The firmware version the display was last checked against (see below). |
 
 ## Touch detection
 
@@ -80,6 +94,15 @@ Treat the mechanism as a hypothesis; the fix is what was verified.
 * On `SIGTERM`/`SIGINT`/`SIGHUP` it restores the stock screen and exits.
 * `procd` respawns the supervisor if it exits unexpectedly; `be3600-anim off`
   stops and disables the service so nothing respawns it.
+
+## Firmware changes
+
+The supervisor remembers which firmware and kernel version it last checked (the
+`verified` file). If the version is different, for example after an upgrade, it
+first probes the display layout (76x284, 16 bpp, 152-byte stride), the stock
+screen service and the touchscreen. If the probe passes, it remembers the new
+version and carries on. If it fails, it leaves the normal screen alone, logs the
+reason, and tries again every minute.
 
 ## Persistence
 

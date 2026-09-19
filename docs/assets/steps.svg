@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 190" role="img" aria-labelledby="t d">
+  <title id="t">Three steps</title>
+  <desc id="d">1. Download and unzip. 2. Double-click Install. 3. Type your router password. The animation appears when the screen is idle; touch it to go back to normal.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef0fb"/><stop offset="1" stop-color="#f8f5ff"/>
+    </linearGradient>
+    <style>
+      .card { fill: #ffffff; stroke: #dfe2f2; stroke-width: 1.5; }
+      .num  { fill: #0e1122; }
+      .n    { fill: #ffffff; font: 700 17px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; text-anchor: middle; }
+      .h    { fill: #0e1122; font: 700 17px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .p    { fill: #666b84; font: 400 13.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .arrow{ fill: none; stroke: #9aa0c8; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <rect width="900" height="190" rx="22" fill="url(#bg)"/>
+
+  <g transform="translate(28,30)">
+    <rect class="card" width="240" height="130" rx="16"/>
+    <circle class="num" cx="34" cy="34" r="16"/><text class="n" x="34" y="40">1</text>
+    <text class="h" x="62" y="40">Download</text>
+    <text class="p" x="24" y="76">Click Code, then Download ZIP</text>
+    <text class="p" x="24" y="98">on the GitHub page, and unzip it.</text>
+  </g>
+
+  <path class="arrow" d="M280 95 h22 m-8 -8 l8 8 l-8 8"/>
+
+  <g transform="translate(330,30)">
+    <rect class="card" width="240" height="130" rx="16"/>
+    <circle class="num" cx="34" cy="34" r="16"/><text class="n" x="34" y="40">2</text>
+    <text class="h" x="62" y="40">Install</text>
+    <text class="p" x="24" y="76">Double-click Install.cmd</text>
+    <text class="p" x="24" y="98">(Mac/Linux: run ./install.sh)</text>
+  </g>
+
+  <path class="arrow" d="M582 95 h22 m-8 -8 l8 8 l-8 8"/>
+
+  <g transform="translate(632,30)">
+    <rect class="card" width="240" height="130" rx="16"/>
+    <circle class="num" cx="34" cy="34" r="16"/><text class="n" x="34" y="40">3</text>
+    <text class="h" x="62" y="40">Enter your password</text>
+    <text class="p" x="24" y="76">Your router's admin password.</text>
+    <text class="p" x="24" y="98">Nothing shows as you type.</text>
+  </g>
+</svg>
