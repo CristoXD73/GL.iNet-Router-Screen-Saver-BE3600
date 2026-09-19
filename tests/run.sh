@@ -372,6 +372,23 @@ else
     fail "Studio Link tests failed: $(grep FAIL "$TMP/studio-link.log")"
 fi
 
+# The single-file downloads on the Studio page are generated; they must match the sources.
+if python3 tools/build_downloads.py --check >"$TMP/downloads.log" 2>&1; then
+    pass "studio/downloads are up to date with their sources"
+else
+    fail "studio/downloads are stale (run: python3 tools/build_downloads.py): $(cat "$TMP/downloads.log")"
+fi
+# The standalone Mac/Linux file must work on its own: no bea2.py beside it.
+mkdir -p "$TMP/solo" && cp studio/downloads/studio-link.py "$TMP/solo/"
+if (cd "$TMP/solo" && python3 -c "
+import importlib.util
+s = importlib.util.spec_from_file_location('solo', 'studio-link.py'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+assert m.parse_library('*\tdefault\t100\t25.0\nlimits\t3\t25\n')") >/dev/null 2>&1; then
+    pass "studio-link.py download imports and works standalone"
+else
+    fail "studio-link.py download does not work on its own"
+fi
+
 
 echo "== Motion Studio's GIF decoder, checked against Pillow =="
 if command -v node >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null; then

@@ -8,6 +8,7 @@
 #   be3600-anim set FILE.bea [NAME]
 #                             validate FILE, keep it in the library and play it
 #   be3600-anim list          the animations in the library (* = playing now)
+#                             (--plain: tab-separated, for programs)
 #   be3600-anim use NAME      play a library animation
 #   be3600-anim remove NAME   delete a library animation
 #   be3600-anim check         validate the active animation and show its length
@@ -27,7 +28,7 @@ MAX_ANIMS=3               # the library holds at most this many animations
 MAX_LOOP_S=25             # and none may loop for longer than this many seconds
 
 usage() {
-    sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -89,6 +90,20 @@ activate() {   # make $1 the animation that plays, and pick it up now if running
         "$SVC" restart
         echo "restarted the screensaver to pick it up."
     fi
+}
+
+# The same list for programs (Motion Studio's Studio Link reads it): one tab-separated
+# line per animation,  * or -  (playing or not)  NAME  BYTES  SECONDS ,  then one
+# "limits" line with the most animations and the longest loop allowed. Stable on purpose.
+lib_plain() {
+    for F in "$LIB"/*.bea; do
+        [ -f "$F" ] || continue
+        MARK="-"
+        cmp -s "$F" "$BEA" && MARK="*"
+        SECS="$(lua "$CHECK" "$F" 2>/dev/null | sed 's/.*= \([0-9.]*\) s per loop.*/\1/')"
+        printf '%s\t%s\t%s\t%s\n' "$MARK" "$(basename "$F" .bea)" "$(file_bytes "$F")" "${SECS:-0}"
+    done
+    printf 'limits\t%s\t%s\n' "$MAX_ANIMS" "$MAX_LOOP_S"
 }
 
 lib_list() {
@@ -379,9 +394,13 @@ set)
     ;;
 
 list)
-    lib_list
-    echo
-    echo "$(lib_count) of $MAX_ANIMS animations; each may loop up to $MAX_LOOP_S s; $(free_kb) KB free on the router."
+    if [ "$2" = "--plain" ]; then
+        lib_plain
+    else
+        lib_list
+        echo
+        echo "$(lib_count) of $MAX_ANIMS animations; each may loop up to $MAX_LOOP_S s; $(free_kb) KB free on the router."
+    fi
     ;;
 
 use)

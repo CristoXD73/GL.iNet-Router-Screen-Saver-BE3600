@@ -74,16 +74,27 @@ be (1-25 s).
 
 To send it to your router without leaving the page, start **Studio Link** once:
 
-1. **Double-click `Studio-Link.cmd`** (macOS/Linux: `./studio-link.sh`) and
-   leave its window open. It runs only on your computer.
-2. In Motion Studio, **drop your `.bea` on the square with the plus** (or click
-   the square to choose a file, or press **Send what I just compiled**).
-3. **Type your router's admin password in the Studio Link window** when it
-   asks. The file is checked, sent, and playing.
+1. **Download it from the Motion Studio page** (the square shows the buttons
+   while Studio Link isn't running: *Download Studio Link for Windows*, or *for
+   Mac / Linux*), then **double-click it** (Mac/Linux: `python3 studio-link.py`).
+   A browser can't start programs by itself, so this one double-click has to
+   happen on your computer. It's a single file, and it runs only on your computer.
+2. **Type your router's admin password in its window** when it asks, once, and
+   leave the window open. The Motion Studio page connects by itself.
+3. Once connected, the page shows **your router's three animation slots**: each
+   filled slot has its name, length and size (the one playing is marked
+   **PLAYING**) with **Play** and **Remove**, and the rest say *Empty slot*.
+   **Drop your `.bea` on the square with the plus** (or click it to choose a
+   file, or press **Send what I just compiled**) to fill one.
 
-The square tells you whether Studio Link is running. If it isn't, or your
-browser blocks it, the old way still works: save the file and drag it onto
-**`Set-Animation.cmd`** (or run `./set-animation.sh`).
+If you cloned this repo you can double-click `Studio-Link.cmd` (macOS/Linux:
+`./studio-link.sh`) instead; it's the same thing. Windows may warn about a
+downloaded `.cmd` file (choose *Keep* / *Run anyway*); it's plain text you can open
+in Notepad first.
+
+If Studio Link isn't running, or your browser blocks it, the old way still works:
+save the file and drag it onto **`Set-Animation.cmd`** (or run
+`./set-animation.sh`).
 
 Drop as many files as you like. Each one is checked first, so a bad file gets a
 plain-English reason instead of breaking anything.
@@ -108,7 +119,8 @@ helper that does it for the page, using the same check-then-SSH steps as
 * It only ever accepts a valid `.bea` animation (checked here and again on the
   router), and only while you have it running.
 * **Your router password is typed into the Studio Link window**, never into
-  the web page.
+  the web page. It is kept in that window's memory only until you close it,
+  and never written to disk.
 * Your browser may ask to allow "devices on your local network". Choose Allow.
   Some browsers may block it entirely; then use `Set-Animation` as above.
 </details>

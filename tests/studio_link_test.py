@@ -12,6 +12,7 @@ import re
 import socket
 import stat
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -43,7 +44,9 @@ FAKE = os.path.join(WORK, "fake-ssh")
 with open(FAKE, "w") as f:
     f.write('#!/bin/sh\n'
             'printf "%s\\n" "$@" > "$0.args"\n'
+            'env > "$0.env"\n'
             'cat > "$0.stdin"\n'
+            '[ -f "$0.out" ] && cat "$0.out"\n'
             'exit "$(cat "$0.rc")"\n')
 os.chmod(FAKE, os.stat(FAKE).st_mode | stat.S_IEXEC)
 
@@ -54,11 +57,22 @@ def set_rc(n):
 
 
 def forget_calls():
-    for ext in (".args", ".stdin"):
+    for ext in (".args", ".stdin", ".env"):
         try:
             os.unlink(FAKE + ext)
         except OSError:
             pass
+
+
+def set_out(text):
+    """What the fake router prints (None = nothing)."""
+    try:
+        os.unlink(FAKE + ".out")
+    except OSError:
+        pass
+    if text is not None:
+        with open(FAKE + ".out", "w") as f:
+            f.write(text)
 
 
 def ssh_args():
@@ -171,6 +185,95 @@ problem, seconds = sl.check_bea(bundled)
 check(problem is None and abs(seconds - 25.0) < 0.01, "the bundled animation passes the check (25.0 s)")
 check(sl.lib_name("Sunset Test.bea") == "Sunset-Test" and sl.lib_name("") == "animation" and len(sl.lib_name("a" * 99)) == 40,
       "names are cleaned the same way as everywhere else")
+
+print("== showing what is on the router ==")
+LIB_OK = "-\tPoison-Pikmin\t839177\t25.0\n*\tdefault\t661381\t25.0\nlimits\t3\t25\n"
+sl.Config.key = "/tmp/some-key"                 # a key means: log in quietly and capture the reply
+set_rc(0)
+set_out(LIB_OK)
+forget_calls()
+s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
+check(s == 200 and d["ok"] and d["max"] == 3 and d["maxSeconds"] == 25, "the library reports its limits")
+check([i["name"] for i in d["items"]] == ["Poison-Pikmin", "default"], "it lists the animations on the router")
+check([i["active"] for i in d["items"]] == [False, True], "it says which one is playing")
+check(ssh_args()[-1] == "be3600-anim list --plain", "it asks the router for the plain list")
+
+set_out("- \tfoo\t1\t1.0\n")                       # a router from before --plain existed
+s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
+check(s == 502 and "older" in d["message"], "an old router is told to update, not shown an empty list")
+
+set_rc(255)
+set_out("root@10.0.0.1: Permission denied (publickey,password).\n")
+s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
+check(s == 502 and "log in" in d["message"], "a failed login is reported")
+set_rc(0)
+
+set_out(None)
+sl.Config.key = None
+forget_calls()
+s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
+check(s == 200 and d.get("needPassword") and ssh_args() is None, "without a password it says so instead of prompting")
+check(req("GET", "/ping", headers={"Origin": ORIGIN})[2]["loggedIn"] is False, "ping says whether Studio Link can log in")
+
+sl.Config.dry_run = True
+s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
+check(s == 200 and d["dryRun"] and d["items"] == [], "dry run shows three empty slots and never calls ssh")
+sl.Config.dry_run = False
+
+print("== playing and removing ==")
+sl.Config.key = "/tmp/some-key"
+set_out("now playing 'default'.\n")
+forget_calls()
+s, h, d = req("POST", "/use?name=default", headers={"Origin": ORIGIN})
+check(s == 200 and d["ok"] and ssh_args()[-1] == "be3600-anim use default", "play switches to that animation")
+forget_calls()
+s, h, d = req("POST", "/remove?name=Purple-silk-25s", headers={"Origin": ORIGIN})
+check(s == 200 and ssh_args()[-1] == "be3600-anim remove Purple-silk-25s", "remove deletes that animation")
+forget_calls()
+for bad in ("a%3Bb", "x%20y", "..%2F..", "%24(id)", ""):
+    s, h, d = req("POST", "/remove?name=" + bad, headers={"Origin": ORIGIN})
+    check(s == 400, "a name like %r is refused" % bad)
+check(ssh_args() is None, "and none of them reached ssh")
+set_rc(1)
+set_out("no animation called 'zzz'. You have:\n")
+s, h, d = req("POST", "/use?name=zzz", headers={"Origin": ORIGIN})
+check(s == 422 and "no animation called" in d["message"], "the router's own reason is passed on")
+set_rc(0)
+set_out(None)
+sl.Config.key = None
+
+print("== the router password ==")
+PW = "p@ss w0rd $HOME `id` \"q\" 'x' ; \\ %s"
+sl.Config.password = PW
+sl.Config.askpass = sl.make_askpass()
+set_out(LIB_OK)
+forget_calls()
+s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
+env = {}
+with open(FAKE + ".env") as f:
+    for line in f:
+        if "=" in line:
+            k, v = line.rstrip("\n").split("=", 1)
+            env[k] = v
+check(s == 200 and env.get("SSH_ASKPASS") == sl.Config.askpass and env.get("SSH_ASKPASS_REQUIRE") == "force",
+      "ssh is told to ask the helper program, not a terminal")
+check(PW not in " ".join(ssh_args()), "the password is never on ssh's command line")
+with open(sl.Config.askpass) as f:
+    check(PW not in f.read(), "the password is never written into the helper program")
+answer = subprocess.run([sl.Config.askpass], env=dict(os.environ, BE3600_STUDIO_PW=PW), capture_output=True, text=True).stdout
+check(answer == PW + "\n", "the helper program hands ssh the password exactly, special characters and all")
+check(os.stat(sl.Config.askpass).st_mode & 0o077 == 0, "only you can read or run that helper program")
+check("NumberOfPasswordPrompts=1" in ssh_args(), "a wrong password is tried once, not repeatedly")
+sl.Config.password = None
+set_out(None)
+
+print("== one job at a time ==")
+sl.Config.key = "/tmp/some-key"
+sl.Config.lock.acquire()
+s, h, d = req("GET", "/library", headers={"Origin": ORIGIN})
+check(s == 409 and d["busy"], "while a send is running, other jobs are told to wait")
+sl.Config.lock.release()
+sl.Config.key = None
 
 server.shutdown()
 print("\n" + ("%d Studio Link test(s) FAILED." % FAILS if FAILS else "All Studio Link tests passed."))
