@@ -12,8 +12,8 @@
 
 Both also carry the router's files (router/, setup/, animations/ as a .tar.gz) so that
 Studio Link can put the screen saver on a router that does not have it yet, with nothing
-else to download. The payload is packed deterministically and identified by a short hash;
---check compares the unpacked contents, so different zlib versions cannot fail it.
+else to download. The payload is identified by a short hash of the files it holds; --check compares the
+unpacked files, so different Python or zlib versions cannot fail it.
 
 The website is static, so these are committed; tests/run.sh runs --check so they can
 never fall behind the sources.
@@ -39,33 +39,59 @@ def read(*p):
 
 
 # ---------------------------------------------------------------------------------------
-# The payload: what the router needs, packed the same way every time
+# The payload: what the router needs, read the same way every time
 # ---------------------------------------------------------------------------------------
 
-def payload_tar():
-    """-> the uncompressed tar of router/, setup/ and animations/ (byte-for-byte repeatable)."""
+def payload_files():
+    """-> [(path in the tar, mode, bytes)] for router/, setup/ and animations/, in a fixed order."""
+    out = []
+    for top in PAYLOAD_DIRS:
+        base = os.path.join(ROOT, top)
+        names = []
+        for dirpath, dirs, files in os.walk(base):
+            dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+            names += [os.path.join(dirpath, f) for f in sorted(files)]
+        for path in names:
+            rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+            with open(path, "rb") as f:
+                data = f.read()
+            if b"\0" not in data:                          # text: the router wants LF line endings
+                data = data.replace(b"\r\n", b"\n")
+            mode = 0o755 if rel.endswith((".sh", ".lua", "be3600-screensaver", "be3600-anim", "be3600-player")) else 0o644
+            out.append((rel, mode, data))
+    return out
+
+
+def tar_of(files):
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as t:
-        for top in PAYLOAD_DIRS:
-            base = os.path.join(ROOT, top)
-            names = []
-            for dirpath, dirs, files in os.walk(base):
-                dirs[:] = sorted(d for d in dirs if d != "__pycache__")
-                names += [os.path.join(dirpath, f) for f in sorted(files)]
-            for path in names:
-                rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
-                with open(path, "rb") as f:
-                    data = f.read()
-                if b"\0" not in data:                      # text: the router wants LF line endings
-                    data = data.replace(b"\r\n", b"\n")
-                info = tarfile.TarInfo(rel)
-                info.size = len(data)
-                info.mtime = 0
-                info.uid = info.gid = 0
-                info.uname = info.gname = ""
-                info.mode = 0o755 if rel.endswith((".sh", ".lua", "be3600-screensaver", "be3600-anim", "be3600-player")) else 0o644
-                t.addfile(info, io.BytesIO(data))
+        for rel, mode, data in files:
+            info = tarfile.TarInfo(rel)
+            info.size = len(data)
+            info.mtime = 0
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            info.mode = mode
+            t.addfile(info, io.BytesIO(data))
     return buf.getvalue()
+
+
+def files_in(tar_bytes):
+    """What a packed tar contains, read back (so comparing does not depend on tar's own byte layout,
+    which differs between Python versions)."""
+    out = []
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r") as t:
+        for m in t.getmembers():
+            out.append((m.name, m.mode, t.extractfile(m).read()))
+    return out
+
+
+def files_id(files):
+    h = hashlib.sha256()
+    for rel, mode, data in files:
+        h.update(("%s\0%o\0%d\0" % (rel, mode, len(data))).encode())
+        h.update(data)
+    return h.hexdigest()[:12]
 
 
 def gz(data):
@@ -94,17 +120,17 @@ def existing_payload(path):
     return (m.group(1), "".join(m.group(2).split())) if m else (None, None)
 
 
-def payload_b64(want_tar, pid, path):
-    """The compressed payload to embed: the committed one if it still unpacks to the same
-    tar (so rebuilding never churns the file), otherwise a fresh one."""
+def payload_b64(files, pid, path):
+    """The compressed payload to embed: the committed one if it still holds exactly these
+    files (so rebuilding never churns the file), otherwise a fresh one."""
     have_id, have_b64 = existing_payload(path)
     if have_id == pid and have_b64:
         try:
-            if gzip.decompress(base64.b64decode(have_b64)) == want_tar:
+            if files_in(gzip.decompress(base64.b64decode(have_b64))) == files:
                 return have_b64
-        except (OSError, ValueError, EOFError):
+        except (OSError, ValueError, EOFError, tarfile.TarError):
             pass
-    return base64.b64encode(gz(want_tar)).decode("ascii")
+    return base64.b64encode(gz(tar_of(files))).decode("ascii")
 
 
 # ---------------------------------------------------------------------------------------
@@ -171,12 +197,12 @@ FILES = {"Studio-Link.cmd": build_cmd, "studio-link.py": build_py}
 
 def main():
     check = "--check" in sys.argv
-    tar = payload_tar()
-    pid = hashlib.sha256(tar).hexdigest()[:12]
+    files = payload_files()
+    pid = files_id(files)
     stale = []
     for name, build in FILES.items():
         path = os.path.join(OUT, name)
-        want = build(pid, payload_b64(tar, pid, path))
+        want = build(pid, payload_b64(files, pid, path))
         have = open(path, "rb").read() if os.path.exists(path) else None
         if check:
             if have != want:

@@ -60,7 +60,7 @@ STUDIO_URL = os.environ.get("STUDIO_LINK_URL") or "https://cristoxd73.github.io/
 
 # In the single-file download the files the router needs are packed in here as
 # (version id, base64 of a .tar.gz); from a clone of the repo they are packed on the fly.
-PAYLOAD = ("978acdcfab14", """
+PAYLOAD = ("996d7d8b48c3", """
 H4sIAAAAAAAC/+y9C1hU57U/vPbew0UwCQoCggkbMBGJMV5AwcS4AS8xpkmESdKatMwwoCAKwmBE
 MWFQ26RnctqMktpqzgHUNJlp06YNNtLmX1HT1NT2nIhJTm9fM4BGE5rWu2xF5/utd++BAU1Pz/nO
 1+f5nu/wZLJv77vetda7ru/N2uq1dWW1d5fVOe4uKZs5a9q0u5yO2rKyqrsd1VXLK1bQ/8TfNPzN
