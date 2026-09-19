@@ -480,7 +480,10 @@ function Handle-Client {
         Send-Response $stream 404 'Not Found' $cors @{ ok = $false; message = 'Not found.' }
     }
     catch {
-        Write-Warn ("Request problem: " + $_.Exception.Message)
+        # The page hangs up on its own quick status check while a router job runs; that is normal.
+        if ($_.Exception.Message -notmatch 'transport connection|forcibly closed|connection was aborted|Unable to read data') {
+            Write-Warn ("Request problem: " + $_.Exception.Message)
+        }
         try { Send-Response $stream 400 'Bad Request' $origin @{ ok = $false; message = $_.Exception.Message } } catch {}
     }
     finally {

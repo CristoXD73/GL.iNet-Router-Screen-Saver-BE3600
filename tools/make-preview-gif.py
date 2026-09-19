@@ -48,7 +48,7 @@ def to_wide(frame):
             v = frame[y * FW * 2 + x * 2] | (frame[y * FW * 2 + x * 2 + 1] << 8)
             r, g, b = (v >> 11) & 31, (v >> 5) & 63, v & 31
             px[x, y] = ((r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2))
-    return img.transpose(Image.ROTATE_90)      # turn the strip so it reads left to right
+    return img.transpose(Image.ROTATE_270)     # turn the strip so it reads left to right
 
 
 def main():

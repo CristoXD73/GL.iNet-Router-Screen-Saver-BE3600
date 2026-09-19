@@ -1098,13 +1098,15 @@ function rgbToFramebuffer(imageData) {
                 (b >> 3);
 
             // Logical landscape 284x76
-            // -> clockwise physical framebuffer 76x284.
+            // -> counter-clockwise physical framebuffer 76x284, which is
+            // how the BE3600's screen is mounted (a clockwise mapping
+            // showed everything upside down on the router).
             //
-            // physical X = 75 - logical Y
-            // physical Y = logical X
+            // physical X = logical Y
+            // physical Y = 283 - logical X
 
-            const px = (LOG_H - 1) - y;
-            const py = x;
+            const px = y;
+            const py = (LOG_W - 1) - x;
 
             const di = (py * FB_W + px) * 2;
 
