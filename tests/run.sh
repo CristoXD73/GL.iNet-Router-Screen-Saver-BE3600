@@ -195,6 +195,14 @@ WHICH="$(BE3600_SYS_INPUT="$TMP/nowhere" "$LUA" router/usr/bin/be3600-wait-touch
 case "$WHICH" in "/dev/input/event0 "*) pass "falls back to event0 when nothing matches" ;; *) fail "fallback gave: $WHICH" ;; esac
 
 
+echo "== Studio library (studio/bea.js) =="
+if command -v node >/dev/null 2>&1; then
+    if node tests/studio.test.js >"$TMP/studio.log" 2>&1; then pass "studio/bea.js: $(grep -c '^  ok' "$TMP/studio.log") checks pass"; else fail "studio tests failed: $(grep FAIL "$TMP/studio.log")"; fi
+else
+    echo "  skip  node not installed"
+fi
+
+
 echo "== line endings: nothing the router reads may contain a carriage return =="
 BADCR="$(grep -rlI "$(printf '\r')" router setup tests tools/*.py tools/make-sample-bea.py install.sh set-animation.sh docs README.md 2>/dev/null)"
 if [ -z "$BADCR" ]; then pass "no CR characters in router/, setup/, scripts or docs"; else fail "CR found in: $BADCR"; fi
