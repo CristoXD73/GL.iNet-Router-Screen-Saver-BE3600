@@ -116,7 +116,12 @@ while :; do
 
     RC=0
     # shellcheck disable=SC2086
-    ssh $SSH_OPTS "root@$ROUTER" 'cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea && rm -f /tmp/be3600-new.bea' < "$FILE" || RC=$?
+    # The file's name (letters, digits . _ - only) becomes its name in the router's library.
+    LIBNAME="$(basename "$FILE")"; LIBNAME="${LIBNAME%.[Bb][Ee][Aa]}"
+    LIBNAME="$(printf '%s' "$LIBNAME" | sed 's/[^A-Za-z0-9._-][^A-Za-z0-9._-]*/-/g' | cut -c1-40)"
+    [ -n "$LIBNAME" ] || LIBNAME="animation"
+    # shellcheck disable=SC2086,SC2029  # SSH_OPTS is a word list; LIBNAME is sanitized above
+    ssh $SSH_OPTS "root@$ROUTER" "cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea $LIBNAME && rm -f /tmp/be3600-new.bea" < "$FILE" || RC=$?
 
     echo
     if [ "$RC" -eq 0 ]; then

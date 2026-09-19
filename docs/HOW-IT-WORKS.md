@@ -50,6 +50,7 @@ starting the incoming one.
 | `/etc/init.d/be3600-screensaver` | A `procd` service that runs the supervisor at boot and respawns it if it dies. |
 | `/etc/be3600-screen/config` | The settings (idle time, touch device, player). |
 | `/etc/be3600-screen/active.bea` | The animation that is played. |
+| `/etc/be3600-screen/animations/` | The library: up to 3 saved animations by name, each looping 25 s or less. `set` saves the file here first, and keeps the animation it replaces as `previous`. |
 | `/etc/be3600-screen/verified` | The firmware version the display was last checked against (see below). |
 
 ## Touch detection

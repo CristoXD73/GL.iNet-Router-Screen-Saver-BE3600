@@ -112,7 +112,9 @@ if [ -f "$BEA" ] && lua /usr/bin/be3600-bea-check.lua "$BEA" >/dev/null 2>&1; th
 elif [ -f "$DEFAULT_GZ" ]; then
     gunzip -c "$DEFAULT_GZ" > "$BEA.new"
     mv "$BEA.new" "$BEA"
-    echo "  installed the bundled animation"
+    mkdir -p /etc/be3600-screen/animations
+    cp "$BEA" /etc/be3600-screen/animations/default.bea
+    echo "  installed the bundled animation (kept in the library as 'default')"
 else
     echo "  no animation available (none bundled, none on the router)"
 fi

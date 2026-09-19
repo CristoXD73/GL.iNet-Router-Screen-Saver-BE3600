@@ -5,7 +5,11 @@
 #   be3600-anim on            enable at boot and start now
 #   be3600-anim off           stop, restore the stock screen, disable at boot
 #   be3600-anim status        show what is running
-#   be3600-anim set FILE.bea  validate FILE and make it the active animation
+#   be3600-anim set FILE.bea [NAME]
+#                             validate FILE, keep it in the library and play it
+#   be3600-anim list          the animations in the library (* = playing now)
+#   be3600-anim use NAME      play a library animation
+#   be3600-anim remove NAME   delete a library animation
 #   be3600-anim check         validate the active animation and show its length
 #   be3600-anim doctor        check the display, touchscreen, animation and service
 #   be3600-anim preview [FILE.bea] [SECONDS]
@@ -17,9 +21,13 @@ BEA="/etc/be3600-screen/active.bea"
 CHECK="/usr/bin/be3600-bea-check.lua"
 TOUCH="/usr/bin/be3600-wait-touch.lua"
 LOCKDIR="/tmp/be3600-screen.lock"
+LIB="/etc/be3600-screen/animations"
+RESERVE_KB=20480          # always leave this much free on the router
+MAX_ANIMS=3               # the library holds at most this many animations
+MAX_LOOP_S=25             # and none may loop for longer than this many seconds
 
 usage() {
-    sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -33,6 +41,69 @@ running() {
 }
 
 count() { ps w | grep -c "$1"; }
+
+# ---- the animation library --------------------------------------------------
+# Every animation you set is kept in $LIB by name, so you can switch back to it
+# later. The one being replaced is saved as "previous" first, so nothing is lost.
+
+safe_name() {   # letters, digits . _ - only, no .bea suffix, at most 40 characters
+    N="${1%.bea}"
+    N="${N%.BEA}"
+    printf '%s' "$N" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-40
+}
+
+# shellcheck disable=SC2012  # BusyBox on the router has no reliable stat; ls -l is fine here
+file_bytes() { ls -l "$1" 2>/dev/null | awk '{print $5}'; }
+free_kb() { df -k /overlay 2>/dev/null | tail -n 1 | awk '{print $4}'; }
+
+lib_count() {
+    N=0
+    for F in "$LIB"/*.bea; do
+        [ -f "$F" ] && N=$((N + 1))
+    done
+    echo "$N"
+}
+
+# Validate $1 like "check", and also refuse a loop longer than MAX_LOOP_S seconds.
+loop_ok() {
+    OUT="$(lua "$CHECK" "$1")" || return 1
+    TICKS="$(echo "$OUT" | sed 's/.*frames, \([0-9]*\) ticks at.*/\1/')"
+    FPS="$(echo "$OUT" | sed 's/.*ticks at \([0-9]*\) fps.*/\1/')"
+    if [ "$TICKS" -gt $((MAX_LOOP_S * FPS)) ]; then
+        echo "INVALID: this animation loops for $(awk "BEGIN { printf \"%.1f\", $TICKS / $FPS }") s; the limit is $MAX_LOOP_S s." >&2
+        return 1
+    fi
+    echo "$OUT"
+}
+
+in_library() {   # true if some library file is byte-identical to $1
+    for F in "$LIB"/*.bea; do
+        [ -f "$F" ] && cmp -s "$F" "$1" && return 0
+    done
+    return 1
+}
+
+activate() {   # make $1 the animation that plays, and pick it up now if running
+    cp "$1" "$BEA.new" && mv "$BEA.new" "$BEA" || return 1
+    if running; then
+        "$SVC" restart
+        echo "restarted the screensaver to pick it up."
+    fi
+}
+
+lib_list() {
+    if ! ls "$LIB"/*.bea >/dev/null 2>&1; then
+        echo "(the library is empty; add one with: be3600-anim set FILE.bea)"
+        return 0
+    fi
+    for F in "$LIB"/*.bea; do
+        NAME="$(basename "$F" .bea)"
+        MARK=" "
+        cmp -s "$F" "$BEA" && MARK="*"
+        LEN="$(lua "$CHECK" "$F" 2>/dev/null | sed 's/.*= \(.*\) per loop.*/\1/')"
+        printf '%s %-24s %6s KB   %s\n' "$MARK" "$NAME" "$(( ($(file_bytes "$F") + 1023) / 1024 ))" "${LEN:-invalid}"
+    done
+}
 
 doctor() {
 
@@ -137,6 +208,14 @@ doctor() {
     else
         ok "the stock GL.iNet screen owns the display"
     fi
+
+    echo
+    echo "Library"
+    ok "$(lib_count) of $MAX_ANIMS animations saved (each may loop up to $MAX_LOOP_S s)"
+    for F in "$LIB"/*.bea; do
+        [ -f "$F" ] || continue
+        OUT="$(loop_ok "$F" 2>&1)" || bad "$(basename "$F"): ${OUT#INVALID: }"
+    done
 
     echo
     echo "Storage"
@@ -260,14 +339,69 @@ status)
 set)
     FILE="$2"
     [ -f "$FILE" ] || usage
-    lua "$CHECK" "$FILE" || exit 1
-    mkdir -p "$(dirname "$BEA")"
-    cp "$FILE" "$BEA.new" && mv "$BEA.new" "$BEA" || exit 1
-    echo "installed as $BEA"
-    if running; then
-        "$SVC" restart
-        echo "restarted the screensaver to pick it up."
+    NAME="$(safe_name "${3:-$(basename "$FILE")}")"
+    [ -n "$NAME" ] || NAME="animation"
+    loop_ok "$FILE" || exit 1
+
+    COUNT="$(lib_count)"
+    EXISTS=0
+    [ -f "$LIB/$NAME.bea" ] && EXISTS=1
+    if [ "$EXISTS" -eq 0 ] && [ "$COUNT" -ge "$MAX_ANIMS" ]; then
+        echo "the library is full ($MAX_ANIMS animations). Remove one first:"
+        lib_list
+        echo "  be3600-anim remove NAME"
+        exit 1
     fi
+
+    # Room for the library copy, the playing copy and a "previous" copy, plus a reserve.
+    NEED_KB=$(( ($(file_bytes "$FILE") * 3 + 1023) / 1024 + RESERVE_KB ))
+    FREE="$(free_kb)"
+    if [ -n "$FREE" ] && [ "$FREE" -lt "$NEED_KB" ]; then
+        echo "not enough space on the router: ${FREE} KB free, ${NEED_KB} KB needed."
+        echo "free some with: be3600-anim list   then   be3600-anim remove NAME"
+        exit 1
+    fi
+
+    mkdir -p "$LIB" "$(dirname "$BEA")"
+    # Never lose the animation that is about to be replaced.
+    if [ -f "$BEA" ] && ! cmp -s "$BEA" "$FILE" && ! in_library "$BEA"; then
+        AFTER=$((COUNT + 1 - EXISTS))      # files in the library once the new one is added
+        if [ -f "$LIB/previous.bea" ] || [ "$AFTER" -lt "$MAX_ANIMS" ]; then
+            cp "$BEA" "$LIB/previous.bea.new" && mv "$LIB/previous.bea.new" "$LIB/previous.bea"
+            echo "kept the old animation as 'previous'."
+        else
+            echo "note: the old animation was not kept (the library is full). Remove one to make room next time."
+        fi
+    fi
+    cp "$FILE" "$LIB/$NAME.bea.new" && mv "$LIB/$NAME.bea.new" "$LIB/$NAME.bea" || exit 1
+    activate "$LIB/$NAME.bea" || exit 1
+    echo "saved as '$NAME' and now the active animation."
+    ;;
+
+list)
+    lib_list
+    echo
+    echo "$(lib_count) of $MAX_ANIMS animations; each may loop up to $MAX_LOOP_S s; $(free_kb) KB free on the router."
+    ;;
+
+use)
+    NAME="$(safe_name "$2")"
+    [ -n "$NAME" ] || usage
+    [ -f "$LIB/$NAME.bea" ] || { echo "no animation called '$NAME'. You have:"; lib_list; exit 1; }
+    loop_ok "$LIB/$NAME.bea" >/dev/null || exit 1
+    activate "$LIB/$NAME.bea" || exit 1
+    echo "now playing '$NAME'."
+    ;;
+
+remove)
+    NAME="$(safe_name "$2")"
+    [ -n "$NAME" ] || usage
+    [ -f "$LIB/$NAME.bea" ] || { echo "no animation called '$NAME'. You have:"; lib_list; exit 1; }
+    if cmp -s "$LIB/$NAME.bea" "$BEA"; then
+        echo "'$NAME' is playing now; it stays playing, but its saved copy is deleted."
+    fi
+    rm -f "$LIB/$NAME.bea"
+    echo "removed '$NAME'."
     ;;
 
 check)
