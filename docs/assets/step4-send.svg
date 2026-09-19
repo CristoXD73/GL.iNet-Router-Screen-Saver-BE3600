@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500" role="img" aria-labelledby="t d">
+  <title id="t">Step 4: it goes to the router, and you manage your three slots</title>
+  <desc id="d">When Studio Link is connected, Compile sends the animation to the router straight away. The page shows the router's three slots with Play and Remove, and a square where you can drop a .bea file. Tap the router screen for the next animation; double-tap to go back to the normal screen.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef0fb"/><stop offset="1" stop-color="#f8f5ff"/></linearGradient>
+    <linearGradient id="strip" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c1a4a"/><stop offset="0.5" stop-color="#4b46b8"/><stop offset="1" stop-color="#241f66"/></linearGradient>
+    <style>
+      .win  { fill: #ffffff; stroke: #dfe2f2; stroke-width: 1.5; }
+      .bar  { fill: #f1f2fa; }
+      .dot  { fill: #d3d6ea; }
+      .h    { fill: #0e1122; font: 700 22px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .n    { fill: #ffffff; font: 700 18px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; text-anchor: middle; }
+      .ch   { fill: #0e1122; font: 700 15px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .p    { fill: #4b516b; font: 400 13.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .s    { fill: #7b8098; font: 400 12px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .b    { fill: #0e1122; font: 700 12.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .bw   { fill: #ffffff; font: 700 12.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .tiny { fill: #7b8098; font: 400 10.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .tinyb{ fill: #0e1122; font: 700 11.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .green{ fill: #1fb655; }
+      .badge{ fill: #dff5e6; }
+      .badget{ fill: #178a41; font: 800 9.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; letter-spacing: 1px; }
+      .slot { fill: #ffffff; stroke: #cfd3ea; stroke-width: 1.5; }
+      .slotA{ fill: #ffffff; stroke: #1fb655; stroke-width: 2.5; }
+      .empty{ fill: none; stroke: #b9bdd6; stroke-width: 2; stroke-dasharray: 6 5; }
+      .sq   { fill: none; stroke: #9aa0c8; stroke-width: 2; stroke-dasharray: 6 5; }
+      .btn  { fill: #f1f2fa; }
+      .card { fill: #ffffff; stroke: #dfe2f2; stroke-width: 1.5; }
+      .call { fill: #ff8a3d; }
+      .ring { fill: none; stroke: #ff8a3d; stroke-width: 2.5; }
+      .line { stroke: #ff8a3d; stroke-width: 2; fill: none; }
+      .red  { fill: #c0263f; font: 700 10.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .dev  { fill: #12141f; }
+    </style>
+  </defs>
+  <rect width="900" height="500" rx="22" fill="url(#bg)"/>
+
+  <circle cx="52" cy="46" r="18" fill="#0e1122"/><text class="n" x="52" y="52">4</text>
+  <text class="h" x="80" y="53">It goes to the router. Manage your three slots.</text>
+
+  <!-- the page -->
+  <g transform="translate(30,90)">
+    <rect class="win" width="560" height="390" rx="16"/>
+    <path d="M0 16a16 16 0 0 1 16-16h528a16 16 0 0 1 16 16v26H0z" class="bar"/>
+    <circle class="dot" cx="24" cy="21" r="5"/><circle class="dot" cx="42" cy="21" r="5"/><circle class="dot" cx="60" cy="21" r="5"/>
+    <text class="s" x="280" y="26" text-anchor="middle">Motion Studio</text>
+
+    <text class="s" x="30" y="72" letter-spacing="1.5">SEND TO YOUR ROUTER</text>
+    <rect class="sq" x="30" y="86" width="86" height="86" rx="14"/>
+    <path d="M73 116v26M60 129h26" stroke="#9aa0c8" stroke-width="4" stroke-linecap="round"/>
+    <text class="tiny" x="73" y="160" text-anchor="middle">Drop a .bea here</text>
+
+    <circle class="green" cx="140" cy="100" r="6"/>
+    <text class="b" x="154" y="105">Connected to your router</text>
+    <text class="p" x="134" y="130">Compile, and it is sent straight away.</text>
+    <text class="p" x="134" y="150">Or drop a saved .bea on the square.</text>
+
+    <rect x="134" y="160" width="0" height="0"/>
+
+    <!-- status -->
+    <rect x="30" y="188" width="500" height="34" rx="12" fill="#e9f8ee"/>
+    <text class="b" x="46" y="209" style="fill:#178a41">Sent. It is saved on the router as 'eyes-normal' and playing.</text>
+
+    <!-- the three slots -->
+    <g transform="translate(30,238)">
+      <rect class="slotA" width="158" height="128" rx="14"/>
+      <text class="tinyb" x="12" y="24">eyes-normal</text>
+      <text class="tiny" x="12" y="40">10.0 s  ·  1.2 MB</text>
+      <rect class="badge" x="12" y="50" width="62" height="18" rx="9"/><text class="badget" x="43" y="63" text-anchor="middle">PLAYING</text>
+      <rect class="btn" x="12" y="92" width="62" height="24" rx="8"/><text class="tinyb" x="43" y="108" text-anchor="middle" style="fill:#c0263f">Remove</text>
+
+      <rect class="slot" x="171" width="158" height="128" rx="14"/>
+      <text class="tinyb" x="183" y="24">default</text>
+      <text class="tiny" x="183" y="40">25.0 s  ·  646 KB</text>
+      <rect class="btn" x="183" y="92" width="50" height="24" rx="8"/><text class="tinyb" x="208" y="108" text-anchor="middle">Play</text>
+      <rect class="btn" x="240" y="92" width="62" height="24" rx="8"/><text class="tinyb" x="271" y="108" text-anchor="middle" style="fill:#c0263f">Remove</text>
+
+      <rect class="empty" x="342" width="158" height="128" rx="14"/>
+      <text class="tinyb" x="421" y="62" text-anchor="middle" style="fill:#7b8098">Empty slot</text>
+      <text class="tiny" x="421" y="80" text-anchor="middle">Drop a .bea to fill it</text>
+    </g>
+  </g>
+
+  <!-- callouts -->
+  <path class="line" d="M590 330 C 610 330, 620 132, 640 132"/>
+  <g transform="translate(640,96)">
+    <rect class="card" width="230" height="102" rx="14"/>
+    <circle class="call" cx="26" cy="26" r="14"/><text class="n" x="26" y="31" style="font-size:15px">1</text>
+    <text class="ch" x="50" y="31">Your three slots</text>
+    <text class="p" x="16" y="56">Play switches to one, Remove</text>
+    <text class="p" x="16" y="76">deletes it. Up to 3, each up to</text>
+    <text class="p" x="16" y="94">25 seconds. Same name replaces.</text>
+  </g>
+
+  <!-- the router's screen -->
+  <g transform="translate(640,222)">
+    <rect class="card" width="230" height="258" rx="14"/>
+    <circle class="call" cx="26" cy="26" r="14"/><text class="n" x="26" y="31" style="font-size:15px">2</text>
+    <text class="ch" x="50" y="31">On the router itself</text>
+    <rect class="dev" x="16" y="52" width="198" height="52" rx="10"/>
+    <rect x="22" y="58" width="186" height="40" rx="7" fill="url(#strip)"/>
+    <rect x="86" y="66" width="14" height="24" rx="6" fill="#ffffff"/><rect x="130" y="66" width="14" height="24" rx="6" fill="#ffffff"/>
+    <text class="p" x="16" y="128">After a few idle seconds the</text>
+    <text class="p" x="16" y="148">animation plays on the screen.</text>
+    <text class="ch" x="16" y="180">Tap</text><text class="p" x="52" y="180">next animation</text>
+    <text class="ch" x="16" y="204">Double-tap</text><text class="p" x="102" y="204">back to normal</text>
+    <text class="s" x="16" y="234">It survives reboots. To remove it all:</text>
+    <text class="s" x="16" y="250" style="font-family:Consolas,Menlo,monospace">be3600-uninstall</text>
+  </g>
+</svg>

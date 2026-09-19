@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 440" role="img" aria-labelledby="t d">
+  <title id="t">Step 1: download Studio Link</title>
+  <desc id="d">On the Motion Studio page, press Download Studio Link for Windows (or for Mac / Linux), then double-click the downloaded file.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef0fb"/><stop offset="1" stop-color="#f8f5ff"/></linearGradient>
+    <style>
+      .win  { fill: #ffffff; stroke: #dfe2f2; stroke-width: 1.5; }
+      .bar  { fill: #f1f2fa; }
+      .dot  { fill: #d3d6ea; }
+      .url  { fill: #ffffff; stroke: #dfe2f2; }
+      .h    { fill: #0e1122; font: 700 22px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .n    { fill: #ffffff; font: 700 18px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; text-anchor: middle; }
+      .p    { fill: #4b516b; font: 400 14px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .s    { fill: #7b8098; font: 400 12px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .b    { fill: #0e1122; font: 700 12.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .bw   { fill: #ffffff; font: 700 12.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+      .mono { fill: #0e1122; font: 600 13px Consolas, "SF Mono", Menlo, monospace; }
+      .btn  { fill: #0e1122; }
+      .soft { fill: #ffffff; stroke: #cfd3ea; stroke-width: 1.5; }
+      .ring { fill: none; stroke: #ff8a3d; stroke-width: 3; }
+      .call { fill: #ff8a3d; }
+      .red  { fill: #e5484d; }
+      .arrow{ fill: none; stroke: #9aa0c8; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <rect width="900" height="440" rx="22" fill="url(#bg)"/>
+
+  <circle cx="52" cy="46" r="18" fill="#0e1122"/><text class="n" x="52" y="52">1</text>
+  <text class="h" x="80" y="53">Download Studio Link</text>
+
+  <!-- the browser -->
+  <g transform="translate(30,90)">
+    <rect class="win" width="560" height="320" rx="16"/>
+    <path d="M0 16a16 16 0 0 1 16-16h528a16 16 0 0 1 16 16v26H0z" class="bar"/>
+    <circle class="dot" cx="24" cy="21" r="5"/><circle class="dot" cx="42" cy="21" r="5"/><circle class="dot" cx="60" cy="21" r="5"/>
+    <rect class="url" x="84" y="9" width="440" height="24" rx="12"/>
+    <text class="s" x="102" y="25">cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio</text>
+
+    <text class="s" x="34" y="80" letter-spacing="1.5">SEND TO YOUR ROUTER</text>
+    <circle class="red" cx="40" cy="106" r="6"/>
+    <text class="b" x="56" y="111">Studio Link is not running</text>
+    <text class="p" x="34" y="140">Download it below and double-click it. The first time it sets up</text>
+    <text class="p" x="34" y="160">your router (just press Enter); then this page connects by itself.</text>
+
+    <rect class="soft" x="34" y="188" width="262" height="40" rx="12"/>
+    <text class="b" x="52" y="213">Download Studio Link for Windows</text>
+    <rect class="soft" x="308" y="188" width="196" height="40" rx="12"/>
+    <text class="b" x="326" y="213">Download for Mac / Linux</text>
+    <rect class="ring" x="28" y="182" width="274" height="52" rx="16"/>
+
+    <circle class="call" cx="316" cy="266" r="16"/><text class="n" x="316" y="272">A</text>
+    <text class="p" x="342" y="271">Click the one for your computer.</text>
+  </g>
+
+  <path class="arrow" d="M606 250 h56 m-12 -12 l12 12 l-12 12"/>
+
+  <!-- the downloaded file -->
+  <g transform="translate(690,150)">
+    <rect class="win" width="180" height="200" rx="16"/>
+    <path d="M62 30h42l22 22v58a6 6 0 0 1-6 6H62a6 6 0 0 1-6-6V36a6 6 0 0 1 6-6z" fill="#eef0fb" stroke="#9aa0c8" stroke-width="2"/>
+    <path d="M104 30v22h22" fill="none" stroke="#9aa0c8" stroke-width="2"/>
+    <rect x="66" y="74" width="46" height="8" rx="4" fill="#0e1122"/><rect x="66" y="90" width="34" height="8" rx="4" fill="#9aa0c8"/>
+    <text class="mono" x="90" y="146" text-anchor="middle">Studio-Link.cmd</text>
+    <rect class="btn" x="30" y="162" width="120" height="26" rx="13"/>
+    <text class="bw" x="90" y="179" text-anchor="middle">Double-click</text>
+  </g>
+  <circle class="call" cx="716" cy="140" r="16"/><text class="n" x="716" y="146">B</text>
+  <text class="s" x="740" y="145">from your Downloads folder</text>
+
+  <text class="s" x="690" y="382">Windows may warn about the file:</text>
+  <text class="s" x="690" y="399">choose Keep, then Run anyway.</text>
+  <text class="s" x="690" y="421">Mac / Linux: python3 studio-link.py</text>
+</svg>
