@@ -1,16 +1,44 @@
-  # be3600-screensaver
+<div align="center">
 
-A custom animation screensaver for the small front display of the
-**GL.iNet GL-BE3600 (Slate 7)** travel router.
+# GL.iNet Router Screen Saver (BE3600)
+
+**A custom animation screen saver for the small front display of the GL.iNet GL-BE3600 (Slate 7) travel router.**
+
+[![CI](https://github.com/CristoXD73/glinet-router-screensaver-be3600/actions/workflows/ci.yml/badge.svg)](https://github.com/CristoXD73/glinet-router-screensaver-be3600/actions/workflows/ci.yml)
+![Device](https://img.shields.io/badge/device-GL--BE3600-2ea44f)
+![Firmware](https://img.shields.io/badge/firmware-4.8.3-blue)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+<img src="https://github.com/user-attachments/assets/54829fd5-542e-4acf-9441-0a5379d06e56" alt="Motion Studio design preview" width="720">
+
+<sub>Design preview of a browser studio for making animations. It is not part of this release yet.</sub>
+
+</div>
+
+---
 
 Leave the router alone for a few seconds and an animation takes over the
 screen. Touch it and the normal GL.iNet UI comes straight back. One command
 turns it off, one script removes it, and swapping in your own animation is a
 drag and drop.
 
-![Frames from the bundled animation](<img width="960" height="584" alt="Image" src="https://github.com/user-attachments/assets/54829fd5-542e-4acf-9441-0a5379d06e56" />)
+<div align="center">
+<img src="docs/preview.png" alt="Frames from the bundled animation" width="720">
+<br><sub>The bundled animation (25 seconds, looping): two eyes that look around.</sub>
+</div>
 
-*The bundled animation (25 seconds, looping): two eyes that look around.*
+## Highlights
+
+| | |
+|---|---|
+| **One-click install** | Double-click `Install.cmd` (Windows) or run `./install.sh`. Type your router password and it goes. |
+| **Finds your router** | Tries the last address that worked, then your default gateway, then `192.168.8.1`. |
+| **Animation included** | The default animation is bundled, so there is nothing else to download. |
+| **Drag and drop** | Drop a `.bea` file on `Set-Animation.cmd` to swap your animation. It is checked before it is sent. |
+| **Touch to wake** | The touchscreen is auto-detected. Touch it and the stock UI returns instantly. |
+| **Survives reboots** | It is a `procd` service, and it stays until you turn it off or uninstall it. |
+| **Self-checking** | `be3600-anim doctor` tells you in plain words whether everything is healthy. |
+| **Tested** | A test suite and CI cover the animation format, the player, touch detection and the scripts. |
 
 ## Install: one click
 
@@ -69,8 +97,9 @@ Over SSH on the router (`ssh root@<router-address>`):
 | `be3600-anim status` | Show whether it is enabled/running, who owns the display, and the active animation. |
 | `be3600-anim set FILE.bea` | Check `FILE.bea` and make it the active animation. |
 | `be3600-anim check` | Validate the active animation and print its loop length. |
+| `be3600-anim doctor` | Full health check: display, touchscreen, animation, service, single display owner, free space. |
 
-The screensaver survives reboots. Touching the screen only dismisses it for a
+The screen saver survives reboots. Touching the screen only dismisses it for a
 moment; it comes back when the screen has been idle again. `be3600-anim off` is
 the one thing that stops it.
 
@@ -81,6 +110,7 @@ the one thing that stops it.
 ```sh
 ANIMATION="/etc/be3600-screen/active.bea"
 IDLE_SECONDS=10      # seconds without a touch before the animation starts (0 = at once)
+TOUCH_DEVICE=""      # leave empty to auto-detect the touchscreen
 ```
 
 Run `be3600-anim on` after editing to apply.
@@ -90,7 +120,7 @@ Run `be3600-anim on` after editing to apply.
 Over SSH on the router:
 
 ```sh
-be3600-uninstall            # remove the screensaver, keep your animation + config
+be3600-uninstall            # remove the screen saver, keep your animation + config
 be3600-uninstall --purge    # remove everything, including /etc/be3600-screen
 ```
 
@@ -114,7 +144,8 @@ in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
   controller Hynitron CST816X) with firmware 4.8.3. The installer refuses to
   install on a device without that display unless you set `FORCE=1` on the
   router, and it will ask for a different address if you point it at the wrong
-  device.
+  device. The supervisor also refuses to take over a display whose layout does
+  not match.
 * The Windows scripts were tested on Windows 11; the macOS/Linux scripts were
   tested in a Linux container, **not on a real Mac**.
 * **While the animation is showing, GL.iNet's screen UI is stopped.** Touch the
@@ -139,6 +170,7 @@ animations/        the bundled animation (gzip-compressed)
 router/            files that end up on the router (same paths as on the device)
 setup/             scripts that run on the router during install / uninstall
 tools/             the Windows PowerShell behind the .cmd files, make-sample-bea.py
+tests/             test suite (run with: sh tests/run.sh)
 docs/              BEA-FORMAT, HOW-IT-WORKS, TROUBLESHOOTING
 ```
 

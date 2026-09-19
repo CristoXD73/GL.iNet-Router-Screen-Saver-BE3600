@@ -78,7 +78,7 @@ read_dropped() {
     printf '%s' "$P" | sed "s/^[[:space:]]*//; s/[[:space:]]*\$//; s/^['\"]//; s/['\"]\$//; s/\\\\ / /g"
 }
 
-printf '\n  %s###%s  %sBE3600 SCREENSAVER%s\n  %s###%s  Animation drop zone\n' "$CY" "$RS" "$BD" "$RS" "$CY" "$RS"
+printf '\n  %s###%s  %sGL.iNet Router Screen Saver (BE3600)%s\n  %s###%s  Animation drop zone\n' "$CY" "$RS" "$BD" "$RS" "$CY" "$RS"
 
 SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
 [ -n "$KEY" ] && SSH_OPTS="$SSH_OPTS -i $KEY -o BatchMode=yes"

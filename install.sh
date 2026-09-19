@@ -72,7 +72,7 @@ find_router() {
     ROUTER="$(ask_address)"
 }
 
-printf '\n  %s###%s  %sBE3600 SCREENSAVER%s\n  %s###%s  One-click installer\n' "$CY" "$RS" "$BD" "$RS" "$CY" "$RS"
+printf '\n  %s###%s  %sGL.iNet Router Screen Saver (BE3600)%s\n  %s###%s  One-click installer\n' "$CY" "$RS" "$BD" "$RS" "$CY" "$RS"
 
 step "1/3" "Finding your router"
 find_router
