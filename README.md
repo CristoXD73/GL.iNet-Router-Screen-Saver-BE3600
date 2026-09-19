@@ -161,10 +161,14 @@ in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
   display and touchscreen before taking over the screen, and leaves the stock
   screen alone (and logs why) if the probe fails. Just run the installer again
   if anything is missing afterwards.
-* The player writes frames directly to `/dev/fb0` with no double buffering, so
-  fast, full-screen motion may show tearing.
+* The player writes frames directly to `/dev/fb0`. This display's driver has no
+  room for a second buffer, no page flipping and no vsync (measured, see
+  [`docs/TEARING.md`](docs/TEARING.md)), so tear-free updates are not possible
+  here; fast, full-screen motion may show tearing.
 * Uses only what ships in the firmware (`sh`, `lua`, `procd`); nothing to
-  compile.
+  compile. The included native player is an optional static binary built from
+  [`native/be3600-player.c`](native/be3600-player.c) (rebuild with
+  `sh native/build.sh`); without it, the Lua player does the same job.
 
 ## What's in the folder
 
@@ -176,9 +180,10 @@ set-animation.sh   macOS/Linux drag-and-drop tool
 animations/        the bundled animation (gzip-compressed)
 router/            files that end up on the router (same paths as on the device)
 setup/             scripts that run on the router during install / uninstall
+native/            source of the native player, its build script, fbprobe (display probe)
 tools/             the Windows PowerShell behind the .cmd files, make-sample-bea.py
 tests/             test suite (run with: sh tests/run.sh)
-docs/              BEA-FORMAT, HOW-IT-WORKS, TROUBLESHOOTING
+docs/              BEA-FORMAT, HOW-IT-WORKS, TROUBLESHOOTING, TEARING
 ```
 
 ## License
