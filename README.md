@@ -89,6 +89,13 @@ changes, which makes most animations 10x or more smaller.
 To generate test animations, [`tools/make-sample-bea.py`](tools/make-sample-bea.py)
 makes a red/green/blue/white colour test and a scrolling rainbow.
 
+## Motion Studio: make animations in your browser
+
+Open [`studio/index.html`](studio/index.html) in any browser (no install, nothing
+is uploaded). Pick a scene (Robot Eyes, Atmosphere, Rainbow, Text), adjust it
+with live preview, and click **Save .bea**. It can also open an existing `.bea`
+to preview it. Then drop the saved file on `Set-Animation.cmd` as above.
+
 ## Everyday use
 
 Over SSH on the router (`ssh root@<router-address>`):
@@ -180,6 +187,7 @@ set-animation.sh   macOS/Linux drag-and-drop tool
 animations/        the bundled animation (gzip-compressed)
 router/            files that end up on the router (same paths as on the device)
 setup/             scripts that run on the router during install / uninstall
+studio/            Motion Studio: browser tool that makes and previews .bea files
 native/            source of the native player, its build script, fbprobe (display probe)
 tools/             the Windows PowerShell behind the .cmd files, make-sample-bea.py
 tests/             test suite (run with: sh tests/run.sh)

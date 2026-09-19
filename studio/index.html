@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion Studio for the GL-BE3600</title>
+<meta name="description" content="Design and preview animations for the GL.iNet GL-BE3600's front display, then save them as .bea files.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1222'/%3E%3Crect x='6' y='10' width='8' height='12' rx='3' fill='white'/%3E%3Crect x='18' y='10' width='8' height='12' rx='3' fill='white'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg-a: #e9ebfb;
+  --bg-b: #f8f5ff;
+  --card: rgba(255, 255, 255, .74);
+  --card-solid: #ffffff;
+  --line: rgba(19, 22, 48, .09);
+  --ink: #0e1122;
+  --muted: #666b84;
+  --accent: #0e1122;
+  --accent-ink: #ffffff;
+  --ok: #1fb655;
+  --warn: #d98a00;
+  --bad: #d6304a;
+  --stage: #090b16;
+  --radius: 22px;
+  --shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 12px 40px rgba(38, 42, 96, .10);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html { color-scheme: light; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font: 15px/1.5 var(--font);
+  color: var(--ink);
+  background:
+    radial-gradient(900px 500px at 15% -10%, rgba(140, 150, 255, .28), transparent 60%),
+    radial-gradient(800px 500px at 100% 0%, rgba(255, 160, 220, .22), transparent 55%),
+    linear-gradient(180deg, var(--bg-a), var(--bg-b));
+  background-attachment: fixed;
+}
+.wrap { max-width: 1100px; margin: 0 auto; padding: 18px 16px 48px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ---- top bar ---- */
+.bar { display: flex; align-items: center; gap: 14px; padding: 10px 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 190px; }
+.logo { width: 42px; height: 42px; border-radius: 13px; background: var(--accent); display: grid; place-items: center; }
+.brand small { display: block; font-size: 10px; letter-spacing: .14em; color: var(--muted); font-weight: 700; }
+.brand strong { display: block; font-size: 17px; letter-spacing: -.01em; line-height: 1.15; }
+.tabs { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(14, 17, 34, .05); margin: 0 auto; flex-wrap: wrap; }
+.tabs button {
+  border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; font-size: 13.5px;
+  padding: 8px 14px; border-radius: 10px; cursor: pointer;
+}
+.tabs button[aria-selected="true"] { background: var(--card-solid); color: var(--ink); box-shadow: 0 1px 3px rgba(20, 24, 60, .14); }
+.tabs button:hover { color: var(--ink); }
+.actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px;
+  background: var(--card-solid); border: 1px solid var(--line); font-size: 12.5px; font-weight: 600; color: var(--muted);
+}
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(31, 182, 85, .18); }
+.pill.warn i { background: var(--warn); box-shadow: 0 0 0 3px rgba(217, 138, 0, .18); }
+.pill.bad i { background: var(--bad); box-shadow: 0 0 0 3px rgba(214, 48, 74, .18); }
+button.btn {
+  font: inherit; font-weight: 700; font-size: 13.5px; padding: 9px 16px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card-solid); color: var(--ink);
+}
+button.btn.dark { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.btn:disabled { opacity: .55; cursor: progress; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(90, 100, 255, .55); outline-offset: 2px; }
+
+/* ---- stage ---- */
+.stage { margin-top: 14px; background: var(--stage); border-radius: 28px; padding: 14px; color: #dfe3ff; box-shadow: 0 20px 60px rgba(20, 24, 70, .28); }
+.stagehead { display: flex; justify-content: space-between; align-items: center; padding: 2px 6px 10px; font-size: 11px; letter-spacing: .12em; font-weight: 700; color: #8a90b8; }
+.stagehead .live { display: inline-flex; align-items: center; gap: 8px; }
+.stagehead .badge { background: #1a1e36; color: #cfd4ff; padding: 3px 8px; border-radius: 999px; letter-spacing: .1em; font-size: 10px; }
+.screenwrap { position: relative; width: 100%; aspect-ratio: 284 / 76; border-radius: 18px; overflow: hidden; background: #000; --tallw: 120px; }
+.screenwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.screenwrap.pixels canvas { image-rendering: pixelated; }
+.screenwrap.tall { width: var(--tallw); aspect-ratio: 76 / 284; margin: 0 auto; }
+.screenwrap.tall canvas { inset: auto; left: 50%; top: 50%; width: calc(var(--tallw) * 284 / 76); height: var(--tallw); transform: translate(-50%, -50%) rotate(90deg); }
+.screenwrap.tall.ccw canvas { transform: translate(-50%, -50%) rotate(-90deg); }
+.transport { display: flex; align-items: center; gap: 12px; padding: 12px 6px 4px; flex-wrap: wrap; }
+.transport button.round { width: 38px; height: 38px; border-radius: 50%; border: 0; background: #ffffff; color: #0e1122; cursor: pointer; display: grid; place-items: center; }
+.transport input[type=range] { flex: 1; min-width: 140px; accent-color: #ffffff; }
+.transport .time { font-variant-numeric: tabular-nums; color: #9aa0c8; font-size: 12.5px; min-width: 88px; text-align: right; }
+.seg { display: inline-flex; padding: 3px; border-radius: 10px; background: #14182d; gap: 2px; }
+.seg button { border: 0; background: transparent; color: #8a90b8; font: inherit; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: #262c50; color: #ffffff; }
+
+/* ---- panels ---- */
+.grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; margin-top: 14px; }
+.panel { padding: 18px; }
+.panel h2 { margin: 0 0 12px; font-size: 12px; letter-spacing: .14em; color: var(--muted); font-weight: 800; text-transform: uppercase; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field label { font-size: 12.5px; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
+.field label span { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.field input[type=range] { width: 100%; accent-color: var(--accent); }
+.field input[type=color] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 10px; padding: 2px; background: var(--card-solid); cursor: pointer; }
+.field input[type=text], .field select {
+  font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card-solid); color: var(--ink); width: 100%;
+}
+.field.wide { grid-column: 1 / -1; }
+.hint { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
+ol.steps { margin: 0; padding-left: 20px; }
+ol.steps li { margin: 0 0 8px; }
+code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: rgba(14, 17, 34, .07); padding: 1px 6px; border-radius: 6px; }
+.err { color: var(--bad); font-weight: 600; margin: 8px 0 0; min-height: 1.3em; }
+footer { margin-top: 22px; text-align: center; font-size: 12.5px; color: var(--muted); }
+footer a { color: inherit; }
+
+#drop {
+  position: fixed; inset: 0; z-index: 10; display: none; place-items: center; background: rgba(14, 17, 34, .55); color: #fff; font-size: 22px; font-weight: 700;
+  backdrop-filter: blur(4px);
+}
+#drop.on { display: grid; }
+
+@media (max-width: 860px) {
+  .grid { grid-template-columns: 1fr; }
+  .tabs { order: 3; width: 100%; margin: 0; }
+  .actions { margin-left: 0; width: 100%; }
+  .brand { min-width: 0; }
+}
+@media (max-width: 520px) {
+  .fields { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="bar card">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24"><rect x="3" y="7" width="7" height="10" rx="3" fill="#fff"/><rect x="14" y="7" width="7" height="10" rx="3" fill="#fff"/></svg>
+      </div>
+      <div><small>GL.INET &middot; BE3600</small><strong>Motion Studio</strong></div>
+    </div>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Scenes"></nav>
+    <div class="actions">
+      <span class="pill" id="status" role="status"><i></i><span id="statusText">Ready</span></span>
+      <button class="btn" id="importBtn" type="button">Import .bea</button>
+      <button class="btn dark" id="saveBtn" type="button">Save .bea</button>
+      <input type="file" id="fileInput" accept=".bea" hidden>
+    </div>
+  </header>
+
+  <section class="stage" aria-label="Preview of the front display">
+    <div class="stagehead">
+      <span class="live"><span id="sceneTag">ROBOT EYES</span><span class="badge" id="modeBadge">PREVIEW</span></span>
+      <span id="dims">284 &times; 76 &middot; wide view of the 76 &times; 284 display</span>
+    </div>
+    <div class="screenwrap" id="screenwrap"><canvas id="screen" width="284" height="76" aria-label="Animation preview"></canvas></div>
+    <div class="transport">
+      <button class="round" id="playBtn" type="button" aria-label="Pause"></button>
+      <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Position in the loop">
+      <span class="time" id="timeLabel">0:00 / 0:12</span>
+      <span class="seg" role="group" aria-label="View">
+        <button type="button" id="viewWide" aria-pressed="true">Wide</button>
+        <button type="button" id="viewTall" aria-pressed="false">Tall</button>
+      </span>
+      <span class="seg" role="group" aria-label="Pixels">
+        <button type="button" id="pixBtn" aria-pressed="false">Pixels</button>
+      </span>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="card panel">
+      <h2 id="controlsTitle">Scene</h2>
+      <div class="fields" id="controls"></div>
+      <p class="err" id="err" role="alert"></p>
+    </section>
+
+    <div style="display:grid; gap:14px; align-content:start">
+      <section class="card panel">
+        <h2>Save settings</h2>
+        <div class="fields">
+          <div class="field wide"><label for="fName">File name</label><input type="text" id="fName" value="my-animation" maxlength="60" autocomplete="off"></div>
+          <div class="field"><label for="fLen">Length <span id="fLenV"></span></label><input type="range" id="fLen" min="2" max="60" value="12"></div>
+          <div class="field"><label for="fFps">Speed <span id="fFpsV"></span></label><input type="range" id="fFps" min="1" max="24" value="10"></div>
+          <div class="field"><label for="fFormat">Format</label>
+            <select id="fFormat"><option value="2">BEA2 (small)</option><option value="1">BEA1 (plain)</option></select></div>
+          <div class="field"><label for="fRot">Rotation</label>
+            <select id="fRot"><option value="cw">Clockwise</option><option value="ccw">Counter-clockwise</option></select></div>
+        </div>
+        <p class="hint">The preview plays at the saved speed, so what you see is what the router shows. If it looks turned the wrong way on your router, switch Rotation and save again.</p>
+      </section>
+
+      <section class="card panel">
+        <h2>Put it on your router</h2>
+        <ol class="steps">
+          <li>Click <b>Save .bea</b>.</li>
+          <li>Windows: drag the file onto <code>Set-Animation.cmd</code>.<br>macOS / Linux: run <code>./set-animation.sh</code> and drag it in.</li>
+          <li>Touch the screen to dismiss it; it comes back when idle.</li>
+        </ol>
+        <p class="hint">Everything here runs in your browser. Nothing is uploaded.</p>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    Part of <a href="https://github.com/CristoXD73/glinet-router-screensaver-be3600">GL.iNet Router Screen Saver (BE3600)</a>.
+    Not affiliated with or endorsed by GL Technologies.
+  </footer>
+</div>
+
+<div id="drop">Drop a .bea file to preview it</div>
+
+<script src="bea.js"></script>
+<script>
+(function () {
+'use strict';
+
+var W = BEA.LW, H = BEA.LH;
+var $ = function (id) { return document.getElementById(id); };
+var screen = $('screen'), ctx = screen.getContext('2d', { willReadFrequently: true });
+
+// ---------------------------------------------------------------- helpers
+
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function smooth(x) { return x * x * (3 - 2 * x); }
+function rng(seed) {                                  // small deterministic random numbers
+    var s = (seed * 9301 + 49297) % 233280;
+    return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+}
+function roundRect(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+}
+function fmtTime(s) { s = Math.max(0, s); return Math.floor(s / 60) + ':' + ('0' + Math.floor(s % 60)).slice(-2); }
+function fmtSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+
+// ---------------------------------------------------------------- scenes
+// Every scene draws one picture at time t (seconds) of a loop D seconds long, and
+// must be seamless: the picture at t = D equals the one at t = 0. Use whole
+// numbers of cycles per loop.
+
+function drawEyes(c, t, D, p) {
+    c.fillStyle = p.bg; c.fillRect(0, 0, W, H);
+    var K = 6, r = rng(p.seed), targets = [], i;
+    for (i = 0; i < K; i++) targets.push([r() * 2 - 1, r() * 2 - 1]);
+    var x = (t / D) * K, k = Math.floor(x) % K, u = x - Math.floor(x);
+    var a = targets[k], b = targets[(k + 1) % K];
+    var m = smooth(clamp((u - 0.55) / 0.45, 0, 1));    // rest, then glance to the next spot
+    var look = p.look / 100;
+    var ox = (a[0] + (b[0] - a[0]) * m) * look * 22;
+    var oy = (a[1] + (b[1] - a[1]) * m) * look * 9;
+
+    var sy = 1, n = Math.round(p.blinks);
+    for (i = 0; i < n; i++) {
+        var centre = (i + 0.5) / n;
+        var d = Math.abs(((t / D - centre + 1.5) % 1) - 0.5) * D;   // seconds from the blink, wrapping
+        if (d < 0.16) sy = Math.min(sy, 0.06 + 0.94 * (d / 0.16));
+    }
+    var w = p.w, h = Math.max(2, p.h * sy);
+    c.save();
+    c.shadowColor = p.glow; c.shadowBlur = 14;
+    c.fillStyle = p.eye;
+    [-1, 1].forEach(function (side) {
+        roundRect(c, W / 2 + side * p.gap / 2 + ox - w / 2, H / 2 + oy - h / 2, w, h, Math.min(w, h) * 0.42);
+        c.fill();
+    });
+    c.restore();
+}
+
+function drawAtmosphere(c, t, D, p) {
+    c.fillStyle = '#04050c'; c.fillRect(0, 0, W, H);
+    c.globalCompositeOperation = 'lighter';
+    var k = Math.round(p.speed);
+    for (var i = 0; i < 4; i++) {
+        var ang = 2 * Math.PI * (k * t / D) + i * 1.9;
+        var cx = W / 2 + Math.cos(ang) * W * 0.30 * (i % 2 ? 1 : -1);
+        var cy = H / 2 + Math.sin(ang * 1 + i) * H * 0.30;
+        var hue = (p.hue + i * p.spread) % 360;
+        var g = c.createRadialGradient(cx, cy, 0, cx, cy, H * 1.15);
+        g.addColorStop(0, 'hsla(' + hue + ',90%,58%,' + (p.glow / 100) + ')');
+        g.addColorStop(1, 'hsla(' + hue + ',90%,50%,0)');
+        c.fillStyle = g; c.fillRect(0, 0, W, H);
+    }
+    c.globalCompositeOperation = 'source-over';
+}
+
+function drawRainbow(c, t, D, p) {
+    var g = c.createLinearGradient(0, 0, W, 0), N = 36, k = Math.round(p.speed), shift = k * t / D;
+    for (var s = 0; s <= N; s++) {
+        g.addColorStop(s / N, 'hsl(' + (((s / N) * 360 * p.repeat - shift * 360) % 360 + 360) % 360 + ',100%,' + p.light + '%)');
+    }
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    var v = c.createLinearGradient(0, 0, 0, H);
+    v.addColorStop(0, 'rgba(0,0,0,.45)'); v.addColorStop(.5, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.45)');
+    c.fillStyle = v; c.fillRect(0, 0, W, H);
+}
+
+function drawText(c, t, D, p) {
+    c.fillStyle = p.bg; c.fillRect(0, 0, W, H);
+    if (!p.text) return;
+    c.font = '700 ' + p.size + 'px ' + getComputedStyle(document.body).fontFamily;
+    c.textBaseline = 'middle'; c.fillStyle = p.color;
+    var period = c.measureText(p.text).width + p.gap;
+    var x0 = -((Math.round(p.speed) * t / D * period) % period);
+    for (var x = x0; x < W; x += period) c.fillText(p.text, x, H / 2 + 2);
+}
+
+var SCENES = {
+    eyes: { name: 'Robot Eyes', draw: drawEyes, params: [
+        { k: 'bg', label: 'Background', type: 'color', def: '#02050a' },
+        { k: 'eye', label: 'Eyes', type: 'color', def: '#ffffff' },
+        { k: 'glow', label: 'Glow', type: 'color', def: '#5fc8ff' },
+        { k: 'w', label: 'Eye width', type: 'range', min: 14, max: 70, def: 44 },
+        { k: 'h', label: 'Eye height', type: 'range', min: 14, max: 64, def: 30 },
+        { k: 'gap', label: 'Space between', type: 'range', min: 20, max: 200, def: 110 },
+        { k: 'look', label: 'Look around', type: 'range', min: 0, max: 100, def: 60 },
+        { k: 'blinks', label: 'Blinks per loop', type: 'range', min: 0, max: 6, def: 2 },
+        { k: 'seed', label: 'Variation', type: 'range', min: 1, max: 99, def: 7 }
+    ] },
+    atmos: { name: 'Atmosphere', draw: drawAtmosphere, params: [
+        { k: 'hue', label: 'Colour', type: 'range', min: 0, max: 359, def: 225 },
+        { k: 'spread', label: 'Colour spread', type: 'range', min: 0, max: 120, def: 45 },
+        { k: 'glow', label: 'Glow', type: 'range', min: 10, max: 100, def: 55 },
+        { k: 'speed', label: 'Drift (cycles per loop)', type: 'range', min: 1, max: 4, def: 1 }
+    ] },
+    rainbow: { name: 'Rainbow', draw: drawRainbow, params: [
+        { k: 'repeat', label: 'Repeats across', type: 'range', min: 1, max: 4, def: 1 },
+        { k: 'speed', label: 'Flow (cycles per loop)', type: 'range', min: 1, max: 4, def: 1 },
+        { k: 'light', label: 'Brightness', type: 'range', min: 25, max: 70, def: 50 }
+    ] },
+    text: { name: 'Text', draw: drawText, params: [
+        { k: 'text', label: 'Message', type: 'text', def: 'HELLO FROM THE SLATE 7', wide: true },
+        { k: 'color', label: 'Text', type: 'color', def: '#ffffff' },
+        { k: 'bg', label: 'Background', type: 'color', def: '#05070f' },
+        { k: 'size', label: 'Size', type: 'range', min: 14, max: 60, def: 34 },
+        { k: 'gap', label: 'Gap between repeats', type: 'range', min: 20, max: 300, def: 120 },
+        { k: 'speed', label: 'Scroll (laps per loop)', type: 'range', min: 1, max: 4, def: 1 }
+    ] }
+};
+var ORDER = ['eyes', 'atmos', 'rainbow', 'text'];
+
+// ---------------------------------------------------------------- state
+
+var state = { scene: 'eyes', params: {}, len: 12, fps: 10, format: '2', rot: 'cw', name: 'my-animation', tall: false, pixels: false };
+var imported = null;            // { name, fps, frames, ticks } while previewing a loaded .bea
+var playing = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+var pos = 0;                    // seconds into the loop
+var lastNow = 0;
+
+ORDER.forEach(function (id) {
+    state.params[id] = {};
+    SCENES[id].params.forEach(function (q) { state.params[id][q.k] = q.def; });
+});
+
+try {
+    var saved = JSON.parse(localStorage.getItem('be3600-studio') || 'null');
+    if (saved && typeof saved === 'object') {
+        ['scene', 'len', 'fps', 'format', 'rot', 'name', 'tall', 'pixels'].forEach(function (k) { if (k in saved) state[k] = saved[k]; });
+        ORDER.forEach(function (id) { if (saved.params && saved.params[id]) Object.keys(state.params[id]).forEach(function (k) { if (k in saved.params[id]) state.params[id][k] = saved.params[id][k]; }); });
+        if (!SCENES[state.scene]) state.scene = 'eyes';
+    }
+} catch (e) { /* storage unavailable: defaults are fine */ }
+function persist() { try { localStorage.setItem('be3600-studio', JSON.stringify(state)); } catch (e) { /* ignore */ } }
+
+function loopSeconds() { return imported ? imported.ticks / imported.fps : state.len; }
+function loopFps() { return imported ? imported.fps : state.fps; }
+
+// ---------------------------------------------------------------- drawing
+
+var imgData = ctx.createImageData(W, H), shownFrame = -1;
+
+function renderAt(c, seconds) {
+    var q = Math.floor(seconds * loopFps() + 1e-6) / loopFps();       // the preview steps at the saved speed
+    if (imported) {
+        var tick = Math.floor(seconds * imported.fps + 1e-6), acc = 0, idx = 0;
+        for (var i = 0; i < imported.frames.length; i++) { acc += imported.frames[i].run; if (tick < acc) { idx = i; break; } idx = i; }
+        if (idx !== shownFrame) {
+            BEA.frameToLandscape(imported.frames[idx].data, state.rot, imgData.data);
+            shownFrame = idx;
+        }
+        c.putImageData(imgData, 0, 0);
+    } else {
+        SCENES[state.scene].draw(c, q, state.len, state.params[state.scene]);
+    }
+}
+
+function tick(now) {
+    var dt = lastNow ? (now - lastNow) / 1000 : 0;
+    lastNow = now;
+    var D = loopSeconds();
+    if (playing) pos = (pos + dt) % D;
+    renderAt(ctx, pos);
+    $('scrub').value = Math.round(pos / D * 1000);
+    $('timeLabel').textContent = fmtTime(pos) + ' / ' + fmtTime(D);
+    requestAnimationFrame(tick);
+}
+
+// ---------------------------------------------------------------- interface
+
+function setStatus(text, kind) {
+    $('statusText').textContent = text;
+    $('status').className = 'pill' + (kind ? ' ' + kind : '');
+}
+function readyStatus() {
+    if (imported) setStatus('Previewing ' + imported.name, 'warn');
+    else setStatus('Ready · ' + state.len + ' s · ' + state.fps + ' fps');
+}
+
+function buildTabs() {
+    var tabs = $('tabs');
+    tabs.textContent = '';
+    ORDER.forEach(function (id) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.setAttribute('role', 'tab'); b.textContent = SCENES[id].name;
+        b.setAttribute('aria-selected', String(!imported && state.scene === id));
+        b.onclick = function () { imported = null; state.scene = id; refreshAll(); persist(); };
+        tabs.appendChild(b);
+    });
+    if (imported) {
+        var b2 = document.createElement('button');
+        b2.type = 'button'; b2.setAttribute('role', 'tab'); b2.setAttribute('aria-selected', 'true'); b2.textContent = 'Imported';
+        tabs.appendChild(b2);
+    }
+}
+
+function buildControls() {
+    var box = $('controls');
+    box.textContent = '';
+    if (imported) {
+        $('controlsTitle').textContent = 'Imported animation';
+        var p = document.createElement('p');
+        p.className = 'hint'; p.style.gridColumn = '1 / -1';
+        p.textContent = imported.name + ': ' + imported.frames.length + ' frames, ' + imported.fps + ' fps, ' + (imported.ticks / imported.fps).toFixed(1) + ' s per loop (' + imported.magic + '). Pick a scene above to design a new one.';
+        box.appendChild(p);
+        return;
+    }
+    var sc = SCENES[state.scene];
+    $('controlsTitle').textContent = sc.name;
+    sc.params.forEach(function (q) {
+        var f = document.createElement('div');
+        f.className = 'field' + (q.wide ? ' wide' : '');
+        var lab = document.createElement('label'), id = 'p_' + q.k;
+        lab.htmlFor = id; lab.textContent = q.label;
+        var input = document.createElement('input'), val = document.createElement('span');
+        input.id = id; input.type = q.type;
+        if (q.type === 'range') { input.min = q.min; input.max = q.max; lab.appendChild(val); }
+        if (q.type === 'text') input.maxLength = 40;
+        input.value = state.params[state.scene][q.k];
+        val.textContent = input.value;
+        input.oninput = function () {
+            var v = q.type === 'range' ? Number(input.value) : input.value;
+            state.params[state.scene][q.k] = v; val.textContent = input.value; persist();
+        };
+        f.appendChild(lab); f.appendChild(input); box.appendChild(f);
+    });
+}
+
+function refreshAll() {
+    buildTabs(); buildControls();
+    $('sceneTag').textContent = imported ? 'IMPORTED' : SCENES[state.scene].name.toUpperCase();
+    $('modeBadge').textContent = imported ? 'FROM FILE' : 'PREVIEW';
+    $('saveBtn').textContent = imported ? 'Save copy' : 'Save .bea';
+    $('saveBtn').disabled = !!imported;
+    shownFrame = -1; pos = 0; $('err').textContent = '';
+    readyStatus();
+}
+
+function applyView() {
+    var w = $('screenwrap');
+    w.classList.toggle('tall', state.tall);
+    w.classList.toggle('ccw', state.rot === 'ccw');
+    w.classList.toggle('pixels', state.pixels);
+    $('viewWide').setAttribute('aria-pressed', String(!state.tall));
+    $('viewTall').setAttribute('aria-pressed', String(state.tall));
+    $('pixBtn').setAttribute('aria-pressed', String(state.pixels));
+    $('dims').textContent = state.tall ? '76 × 284 · the display as the router sees it' : '284 × 76 · wide view of the 76 × 284 display';
+}
+
+function setPlayIcon() {
+    $('playBtn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    $('playBtn').innerHTML = playing
+        ? '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="2" width="3.6" height="12" rx="1"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 2.4v11.2a.6.6 0 0 0 .9.5l9-5.6a.6.6 0 0 0 0-1L4.9 1.9a.6.6 0 0 0-.9.5z"/></svg>';
+}
+
+$('playBtn').onclick = function () { playing = !playing; setPlayIcon(); };
+$('scrub').oninput = function () { pos = Number($('scrub').value) / 1000 * loopSeconds(); };
+$('viewWide').onclick = function () { state.tall = false; applyView(); persist(); };
+$('viewTall').onclick = function () { state.tall = true; applyView(); persist(); };
+$('pixBtn').onclick = function () { state.pixels = !state.pixels; applyView(); persist(); };
+
+function bindSave(id, key, num) {
+    var el = $(id);
+    el.value = state[key];
+    el.oninput = el.onchange = function () {
+        state[key] = num ? Number(el.value) : el.value;
+        if (id === 'fRot') { shownFrame = -1; applyView(); }
+        syncSaveLabels(); readyStatus(); persist();
+    };
+}
+function syncSaveLabels() {
+    $('fLenV').textContent = state.len + ' s';
+    $('fFpsV').textContent = state.fps + ' fps';
+}
+bindSave('fName', 'name'); bindSave('fLen', 'len', true); bindSave('fFps', 'fps', true);
+bindSave('fFormat', 'format'); bindSave('fRot', 'rot');
+
+// ---------------------------------------------------------------- saving
+
+function safeName(s) { return (s || 'animation').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'animation'; }
+
+function save() {
+    var btn = $('saveBtn'), off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    var oc = off.getContext('2d', { willReadFrequently: true });
+    var fps = state.fps, n = Math.round(state.len * fps), frames = [], i = 0;
+    btn.disabled = true; $('err').textContent = '';
+
+    function step() {
+        var stop = Math.min(n, i + 8);
+        for (; i < stop; i++) {
+            SCENES[state.scene].draw(oc, i / fps, state.len, state.params[state.scene]);
+            frames.push({ run: 1, data: BEA.landscapeToFrame(oc.getImageData(0, 0, W, H).data, state.rot) });
+        }
+        if (i < n) { setStatus('Rendering ' + i + ' / ' + n, 'warn'); setTimeout(step, 0); return; }
+        try {
+            var bytes = state.format === '1' ? BEA.encodeBea1(frames, fps) : BEA.encodeBea2(frames, fps);
+            var a = document.createElement('a'), url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+            a.href = url; a.download = safeName(state.name) + '.bea';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+            setStatus('Saved ' + a.download + ' · ' + fmtSize(bytes.length));
+        } catch (e) {
+            $('err').textContent = e.message; setStatus('Could not save', 'bad');
+        }
+        btn.disabled = !!imported;
+    }
+    setTimeout(step, 0);
+}
+$('saveBtn').onclick = save;
+
+// ---------------------------------------------------------------- importing
+
+function loadFile(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+        try {
+            var d = BEA.decode(new Uint8Array(reader.result));
+            imported = { name: file.name, fps: d.fps, frames: d.frames, ticks: d.ticks, magic: d.magic };
+            refreshAll();
+        } catch (e) {
+            $('err').textContent = file.name + ': ' + e.message;
+            setStatus('Could not open that file', 'bad');
+        }
+    };
+    reader.onerror = function () { $('err').textContent = 'That file could not be read.'; setStatus('Could not open that file', 'bad'); };
+    reader.readAsArrayBuffer(file);
+}
+$('importBtn').onclick = function () { $('fileInput').click(); };
+$('fileInput').onchange = function () { loadFile($('fileInput').files[0]); $('fileInput').value = ''; };
+
+var dragDepth = 0;
+window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; $('drop').classList.add('on'); });
+window.addEventListener('dragleave', function () { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('drop').classList.remove('on'); });
+window.addEventListener('dragover', function (e) { e.preventDefault(); });
+window.addEventListener('drop', function (e) {
+    e.preventDefault(); dragDepth = 0; $('drop').classList.remove('on');
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+// ---------------------------------------------------------------- go
+
+syncSaveLabels(); applyView(); setPlayIcon(); refreshAll();
+requestAnimationFrame(tick);
+
+// exposed for tests
+window.__studio = { state: state, save: save, renderAt: renderAt };
+})();
+</script>
+</body>
+</html>
