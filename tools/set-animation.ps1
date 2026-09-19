@@ -38,7 +38,7 @@ function Read-DroppedPath {
     return $s
 }
 
-Show-Banner 'BE3600 SCREENSAVER' 'Animation drop zone'
+Show-Banner 'GL.iNet Router Screen Saver (BE3600)' 'Animation drop zone'
 
 $ip = $null
 $done = 0

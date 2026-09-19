@@ -16,7 +16,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $tar  = Join-Path $env:TEMP ('be3600-setup-{0}.tar' -f (Get-Random))
 $code = 1
 
-Show-Banner 'BE3600 SCREENSAVER' 'One-click installer'
+Show-Banner 'GL.iNet Router Screen Saver (BE3600)' 'One-click installer'
 
 try {
     # ------------------------------------------------------------------
