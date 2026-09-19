@@ -58,7 +58,7 @@ doctor() {
         VSIZE="$(cat "$FB/virtual_size" 2>/dev/null)"
         BPP="$(cat "$FB/bits_per_pixel" 2>/dev/null)"
         STRIDE="$(cat "$FB/stride" 2>/dev/null)"
-        MODES="$(cat "$FB/modes" 2>/dev/null | head -n 1)"
+        MODES="$(head -n 1 "$FB/modes" 2>/dev/null)"
         info "driver $NAME, virtual $VSIZE, ${BPP}bpp, stride $STRIDE, mode $MODES"
         if [ "$VSIZE" = "76,284" ] && [ "$BPP" = "16" ] && [ "$STRIDE" = "152" ]; then
             ok "layout matches the .bea frame format (76x284, 16bpp, 152-byte stride = 43168 bytes)"
