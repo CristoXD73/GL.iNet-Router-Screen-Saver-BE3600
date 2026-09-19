@@ -97,6 +97,7 @@ Over SSH on the router (`ssh root@<router-address>`):
 | `be3600-anim status` | Show whether it is enabled/running, who owns the display, and the active animation. |
 | `be3600-anim set FILE.bea` | Check `FILE.bea` and make it the active animation. |
 | `be3600-anim check` | Validate the active animation and print its loop length. |
+| `be3600-anim preview [FILE.bea] [SECONDS]` | Play an animation for a few seconds (default 10) without installing it, then restore everything. Touch to stop early. |
 | `be3600-anim doctor` | Full health check: display, touchscreen, animation, service, single display owner, free space. |
 
 The screen saver survives reboots. Touching the screen only dismisses it for a
@@ -152,8 +153,11 @@ in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
   screen to get it back.
 * **Firmware upgrades are untested.** The installer lists the project's files
   in `/etc/sysupgrade.conf` so a "keep settings" upgrade should preserve them,
-  but this has not been verified. Just run the installer again if anything is
-  missing afterwards.
+  but this has not been verified on a real upgrade. If the firmware or kernel
+  version differs from the one last verified, the screen saver probes the
+  display and touchscreen before taking over the screen, and leaves the stock
+  screen alone (and logs why) if the probe fails. Just run the installer again
+  if anything is missing afterwards.
 * The player writes frames directly to `/dev/fb0` with no double buffering, so
   fast, full-screen motion may show tearing.
 * Uses only what ships in the firmware (`sh`, `lua`, `procd`); nothing to
