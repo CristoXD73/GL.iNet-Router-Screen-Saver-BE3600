@@ -56,7 +56,8 @@ check_bea() {
     [ -f "$F" ] || { echo "I can't find that file."; return 1; }
     SIZE="$(wc -c < "$F" | tr -d ' ')"
     [ "$SIZE" -ge 12 ] || { echo "That file is too small to be a .bea animation."; return 1; }
-    [ "$(head -c 4 "$F")" = "BEA1" ] || { echo "That is not a .bea animation (it does not start with BEA1)."; return 1; }
+    MAGIC="$(head -c 4 "$F")"
+    case "$MAGIC" in BEA1|BEA2) ;; *) echo "That is not a .bea animation (it does not start with BEA1 or BEA2)."; return 1 ;; esac
     FPS="$(od -An -tu2 -j4 -N2 "$F" | tr -d ' ')"
     REC="$(od -An -tu2 -j6 -N2 "$F" | tr -d ' ')"
     FB="$(od -An -tu4 -j8 -N4 "$F" | tr -d ' ')"
@@ -65,7 +66,21 @@ check_bea() {
         echo "Its speed is $FPS fps; it must be 1 to 24."
         return 1
     fi
-    EXPECTED=$((12 + REC * (2 + FB)))
+    [ "$REC" -ge 1 ] || { echo "It has no frames."; return 1; }
+    if [ "$MAGIC" = "BEA1" ]; then
+        EXPECTED=$((12 + REC * (2 + FB)))
+    else
+        # BEA2: walk the records (u16 run, u8 kind, u32 payload length, payload).
+        # The router checks every span of every delta when the file is installed.
+        EXPECTED=12
+        N=0
+        while [ "$N" -lt "$REC" ]; do
+            [ $((EXPECTED + 7)) -le "$SIZE" ] || { echo "It is cut off at frame $((N + 1)). It may be incomplete."; return 1; }
+            PLEN="$(od -An -tu4 -j$((EXPECTED + 3)) -N4 "$F" | tr -d ' ')"
+            EXPECTED=$((EXPECTED + 7 + PLEN))
+            N=$((N + 1))
+        done
+    fi
     [ "$SIZE" -eq "$EXPECTED" ] || { echo "Its size is $SIZE bytes but its header says $EXPECTED. It may be incomplete."; return 1; }
     echo "$REC frames, $FPS fps"
     return 0

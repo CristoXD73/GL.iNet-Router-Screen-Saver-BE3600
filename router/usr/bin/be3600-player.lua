@@ -68,8 +68,11 @@ local header =
     )
 
 
+local MAGIC =
+    header:sub(1,4)
+
 assert(
-    header:sub(1,4) == "BEA1",
+    MAGIC == "BEA1" or MAGIC == "BEA2",
     "Invalid BEA animation"
 )
 
@@ -101,6 +104,127 @@ local delay =
     math.floor(
         1000000 / fps
     )
+
+
+-- BEA2 (changes only): the framebuffer keeps its picture between records, so
+-- the file is opened once and only the changed byte ranges are rewritten.
+-- Record: u16 run, u8 kind (0 full, 1 delta, 2 hold), u32 payload length, payload.
+-- The file has already been validated by be3600-bea-check.lua.
+local function play_bea2()
+
+    local fb =
+        assert(
+            io.open(
+                FB_PATH,
+                "r+b"
+            )
+        )
+
+    while true do
+
+        f:seek(
+            "set",
+            12
+        )
+
+        for i=1,records do
+
+            local rec =
+                assert(
+                    f:read(7)
+                )
+
+            local run =
+                u16(
+                    rec,
+                    1
+                )
+
+            local kind =
+                rec:byte(3)
+
+            local plen =
+                u32(
+                    rec,
+                    4
+                )
+
+            local payload =
+                ""
+
+            if plen > 0 then
+                payload =
+                    assert(
+                        f:read(plen)
+                    )
+            end
+
+
+            if kind == 0 then
+
+                fb:seek("set", 0)
+                assert(fb:write(payload))
+
+            elseif kind == 1 then
+
+                local n =
+                    u16(
+                        payload,
+                        1
+                    )
+
+                local p = 3
+
+                for s=1,n do
+
+                    local off =
+                        u32(
+                            payload,
+                            p
+                        )
+
+                    local len =
+                        u16(
+                            payload,
+                            p + 4
+                        )
+
+                    fb:seek("set", off)
+                    assert(
+                        fb:write(
+                            payload:sub(
+                                p + 6,
+                                p + 5 + len
+                            )
+                        )
+                    )
+
+                    p = p + 6 + len
+                end
+            end
+
+            fb:flush()
+
+            os.execute(
+                "/bin/usleep " ..
+                tostring(
+                    delay * run
+                )
+            )
+        end
+
+        loops = loops + 1
+
+        if MAX_LOOPS and loops >= MAX_LOOPS then
+            os.exit(0)
+        end
+    end
+end
+
+
+if MAGIC == "BEA2" then
+    play_bea2()
+end
 
 
 while true do
