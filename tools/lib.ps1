@@ -260,3 +260,14 @@ function Format-Size {
     if ($Bytes -ge 1MB) { return ('{0:N1} MB' -f ($Bytes / 1MB)) }
     return ('{0:N0} KB' -f ($Bytes / 1KB))
 }
+
+# A file's name becomes its name in the router's library: letters, digits and
+# . _ - only (so it is safe inside a shell command), no ".bea", at most 40 characters.
+function ConvertTo-LibName {
+    param([string]$FileName)
+    $n = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+    $n = ($n -replace '[^A-Za-z0-9._-]+', '-').Trim('-')
+    if (-not $n) { $n = 'animation' }
+    if ($n.Length -gt 40) { $n = $n.Substring(0, 40) }
+    return $n
+}

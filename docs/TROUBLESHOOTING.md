@@ -3,6 +3,7 @@
 * [How to open a terminal on the router](#how-to-open-a-terminal-on-the-router)
 * [First, ask the router what's wrong](#first-ask-the-router-whats-wrong)
 * [The installer](#the-installer)
+* [Motion Studio](#motion-studio)
 * [Everyday problems](#everyday-problems)
 * [Technical problems](#technical-problems)
 
@@ -77,6 +78,39 @@ installer asks for the right address and tries again.
   display. `FORCE=1 sh setup/router-install.sh` on the router overrides the
   check, but the frame size won't match and the player will refuse animations.
 * "no lua interpreter": install one with `opkg install lua`.
+
+## Motion Studio
+
+### The drop zone says "Studio Link is not running"
+
+Studio Link is the small helper that lets Motion Studio's drop zone send files to
+your router. Start it and leave its window open: double-click **`Studio-Link.cmd`**
+(macOS/Linux: `./studio-link.sh`). The square connects by itself within a few seconds.
+
+Still not connecting?
+
+* **Your browser asked about "devices on your local network"** and you said no. Allow
+  it for the Motion Studio page (the padlock or site-settings icon in the address bar).
+* **The port is busy.** Studio Link uses port 8791. If it says it can't start, another
+  copy is already running; close it. To use another port: `Studio-Link.cmd -Port 8792`
+  (the page always looks at 8791, so this is only for troubleshooting).
+* **Using a copy of Motion Studio on your own web address?** Studio Link only accepts the
+  official page, a local file, and `localhost`. Set `STUDIO_LINK_ORIGINS` to your
+  address before starting it.
+* **Your browser blocks it anyway** (some do). Nothing is lost: save the file and drag it
+  onto **`Set-Animation.cmd`** instead.
+
+### "The router did not accept that file"
+
+The router holds at most 3 animations. Send the file under a name you already use to
+replace that one, or remove one first: `be3600-anim list`, then
+`be3600-anim remove NAME`. The router's own message is in the Studio Link window.
+
+### The GIF looks cropped, or has bars
+
+That's the fit mode in the GIF tab: **Fill** crops the edges to cover the strip (use
+**Focus** to choose which part stays), **Fit** shows the whole picture with bars in the
+background colour, and **Stretch** squashes it to the strip's shape.
 
 ## Everyday problems
 

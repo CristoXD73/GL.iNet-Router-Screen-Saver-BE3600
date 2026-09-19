@@ -79,7 +79,7 @@ if ($code -eq 0) {
         'All set - the screensaver is installed and running.',
         '',
         'It starts on its own after a few idle seconds.',
-        'Touch the screen to dismiss it.',
+        'Tap = next animation. Double-tap = dismiss.',
         '',
         'Change the animation:',
         '   drag a .bea file onto  Set-Animation.cmd',

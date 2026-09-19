@@ -8,14 +8,19 @@
 #   CUSTOM  be3600-player.lua, writing frames straight to /dev/fb0
 #
 #   STOCK --(IDLE_SECONDS with no touch)--> CUSTOM
-#   CUSTOM --(a finger touches the screen)--> STOCK
+#   CUSTOM --(a single tap)--> next saved animation (stays CUSTOM)
+#   CUSTOM --(a second tap within DOUBLE_TAP_WINDOW_SECONDS)--> STOCK
 #
 # Settings live in /etc/be3600-screen/config (shell syntax).
 
 CONF="/etc/be3600-screen/config"
 ANIMATION="/etc/be3600-screen/active.bea"
+LIB="/etc/be3600-screen/animations"
 IDLE_SECONDS=10
 TOUCH_DEVICE=""          # empty = find the touchscreen automatically
+DOUBLE_TAP_WINDOW_SECONDS=0.4   # a second tap within this long is a double-tap (exit);
+                                 # a lone tap switches to the next saved animation instead
+SWITCH_FADE_MS=250              # how long a tap-triggered switch crossfades (native player only)
 LOCKDIR="/tmp/be3600-screen.lock"
 PLAYER="/usr/bin/be3600-player.lua"
 NATIVE="/usr/bin/be3600-player"
@@ -39,10 +44,27 @@ log() {
 
 # True if the PID exists and is not a zombie. (kill -0 alone reports
 # success for a zombie, so a crashed background job would look alive.)
+#
+# Reads /proc/PID/status with shell built-ins only (no grep to fork), because this
+# is checked several times a second while an animation is showing.
 alive() {
-    [ -n "$1" ] &&
-    [ -r "/proc/$1/status" ] &&
-    ! grep -q '^State:[[:space:]]*Z' "/proc/$1/status" 2>/dev/null
+    [ -n "$1" ] || return 1
+
+    ALIVE_STATE=""
+
+    while read -r ALIVE_KEY ALIVE_VAL; do
+        if [ "$ALIVE_KEY" = "State:" ]; then
+            ALIVE_STATE="$ALIVE_VAL"
+            break
+        fi
+    done 2>/dev/null < "/proc/$1/status"
+
+    # Empty: the process is gone. Z...: a zombie (dead, not yet reaped).
+    case "$ALIVE_STATE" in
+        ''|Z*) return 1 ;;
+    esac
+
+    return 0
 }
 
 
@@ -177,7 +199,9 @@ kill_custom() {
         kill "$PID" 2>/dev/null || true
     done
 
-    /bin/usleep 150000
+    # Brief grace period for any stray player we didn't have a tracked PID for
+    # (the normal, tracked PLAYER_PID was already waited for above).
+    /bin/usleep 50000
 
     for PID in $(ps w | grep '[b]e3600-player' | awk '{print $1}'); do
         kill -9 "$PID" 2>/dev/null || true
@@ -234,6 +258,10 @@ start_stock() {
 
 start_custom() {
 
+    # $1 (optional): milliseconds to crossfade in over, native player only.
+    # Used for a tap-triggered switch; a cold start from idle omits it.
+    FADE_MS="$1"
+
     kill_custom
 
     # GL.iNet must fully release the framebuffer first.
@@ -242,10 +270,15 @@ start_custom() {
     echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
 
     # The native player is preferred (exact timing, almost no CPU); the Lua
-    # player is the fallback. PLAYER_ENGINE=lua in the config forces Lua.
+    # player is the fallback and does not support --fade. PLAYER_ENGINE=lua in
+    # the config forces Lua.
     if [ "$PLAYER_ENGINE" != "lua" ] && [ -x "$NATIVE" ]; then
         ENGINE="native"
-        "$NATIVE" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
+        if [ -n "$FADE_MS" ]; then
+            "$NATIVE" --fade "$FADE_MS" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
+        else
+            "$NATIVE" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
+        fi
     else
         ENGINE="lua"
         /usr/bin/lua "$PLAYER" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
@@ -253,7 +286,7 @@ start_custom() {
 
     PLAYER_PID=$!
 
-    /bin/usleep 200000
+    /bin/usleep 70000
 
     if ! alive "$PLAYER_PID"; then
         log "ERROR: animation failed to start (see /tmp/be3600-player.log)"
@@ -264,6 +297,73 @@ start_custom() {
     log "OWNER = CUSTOM PID=$PLAYER_PID ($ENGINE player)"
 
     return 0
+}
+
+
+# ------------------------------------------------------------
+# SWITCHING BETWEEN SAVED ANIMATIONS
+#
+# The library ($LIB) holds up to a few named .bea files (see be3600-anim set /
+# list / use). A single tap while an animation is showing steps to the next one
+# in the library, in a fixed round-robin order, without leaving CUSTOM.
+# ------------------------------------------------------------
+
+# Prints the library file that should play after the one now active, in a fixed
+# order, wrapping around. Prints nothing (and fails) if there are fewer than two
+# usable animations to choose between.
+next_library_animation() {
+
+    FILES=""
+
+    for F in "$LIB"/*.bea; do
+        [ -f "$F" ] && FILES="$FILES $F"
+    done
+
+    # shellcheck disable=SC2086  # deliberate word-splitting of a list we just built
+    set -- $FILES
+
+    [ "$#" -ge 2 ] || return 1
+
+    CUR=0
+    i=1
+
+    for F in "$@"; do
+        cmp -s "$F" "$ANIMATION" && CUR=$i
+        i=$((i + 1))
+    done
+
+    NEXT=$(( CUR % $# + 1 ))
+
+    i=1
+
+    for F in "$@"; do
+        if [ "$i" -eq "$NEXT" ]; then
+            echo "$F"
+            return 0
+        fi
+        i=$((i + 1))
+    done
+
+    return 1
+}
+
+rotate_animation() {
+
+    NEXTFILE="$(next_library_animation)"
+
+    if [ -z "$NEXTFILE" ]; then
+        log "tap: only one saved animation (or none); nothing to switch to"
+        return 0
+    fi
+
+    if ! cp "$NEXTFILE" "$ANIMATION.new" || ! mv "$ANIMATION.new" "$ANIMATION"; then
+        log "tap: could not switch animation"
+        return 1
+    fi
+
+    log "tap: switched to $(basename "$NEXTFILE" .bea)"
+
+    start_custom "$SWITCH_FADE_MS"
 }
 
 
@@ -309,9 +409,25 @@ wait_for_idle() {
 # ------------------------------------------------------------
 # ANIMATION RUNNING (custom owns the display)
 #
-# Returns 0 on a real touch, 1 if the player keeps crashing.
+# Returns 0 on a double-tap (leave to stock), 1 if the player keeps crashing.
+# A single tap switches to the next saved animation and keeps running.
 # Also restarts the player if it dies (up to 3 times).
 # ------------------------------------------------------------
+
+# True (0) if a second tap arrives within DOUBLE_TAP_WINDOW_SECONDS; false
+# (1) if that time passes with nothing, or the helper itself fails.
+# DOUBLE_TAP_WINDOW_SECONDS may have a decimal point (this router's "timeout"
+# accepts fractional seconds); reject anything that isn't a plain non-negative
+# number, with or without one decimal point, and fall back to a safe default.
+second_tap_follows() {
+    SECS="$DOUBLE_TAP_WINDOW_SECONDS"
+    case "$SECS" in
+        ''|*[!0-9.]*|*.*.*) SECS=0.4 ;;
+    esac
+
+    timeout "$SECS" /usr/bin/lua "$TOUCH" >/dev/null 2>&1 &
+    wait $!
+}
 
 run_animation() {
 
@@ -323,10 +439,13 @@ run_animation() {
         TOUCH_PID=$!
 
         # Watch both processes: the touch helper (exits on a touch)
-        # and the player (should never exit).
+        # and the player (should never exit). Polled quickly (10/s) so a tap
+        # is noticed right away; refresh_lock is cheap enough to afford that.
+        POLLS=0
         while alive "$TOUCH_PID" && alive "$PLAYER_PID"; do
-            refresh_lock
-            sleep 1
+            POLLS=$((POLLS + 1))
+            [ $((POLLS % 10)) -eq 0 ] && refresh_lock
+            /bin/usleep 100000
         done
 
         if alive "$TOUCH_PID"; then
@@ -353,8 +472,21 @@ run_animation() {
         RC=$?
 
         if [ "$RC" -eq 0 ]; then
-            log "touch while animation active"
-            return 0
+
+            # Wait for the finger to actually lift before timing a possible
+            # second tap. A real tap is not instantaneous, and while it stays
+            # down the same contact would otherwise look like a second one.
+            # Capped in case a release is ever not reported cleanly.
+            timeout 2 /usr/bin/lua "$TOUCH" --wait-release >/dev/null 2>&1 &
+            wait $!
+
+            if second_tap_follows; then
+                log "double-tap: leaving the animation"
+                return 0
+            fi
+
+            rotate_animation
+            continue
         fi
 
         log "touch helper exited RC=$RC; retrying"

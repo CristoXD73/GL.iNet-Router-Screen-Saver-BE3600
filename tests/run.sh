@@ -166,6 +166,41 @@ if command -v cc >/dev/null 2>&1; then
             if BE3600_FB="$TMP/fb_bad" BE3600_LOOPS=1 "$TMP/player-native" "$f" >/dev/null 2>&1; then fail "native player accepted $n"; else pass "native player rejects $n"; fi
         done
         if "$TMP/player-native" --version >/dev/null 2>&1; then pass "--version works"; else fail "--version failed"; fi
+
+        # --fade: crossfade from what is on the screen into the first frame. The
+        # "screen" is an ordinary file pre-filled with a blue picture; the animation
+        # is one red frame. (Pixels are RGB565 little-endian: blue 0x001F, red 0xF800.)
+        python3 - "$TMP" <<'PY'
+import struct, sys
+d = sys.argv[1]
+FB = 43168
+red = bytes([0x00, 0xF8]) * (FB // 2)
+blue = bytes([0x1F, 0x00]) * (FB // 2)
+open(d + '/red.bea', 'wb').write(b'BEA1' + struct.pack('<HHI', 10, 1, FB) + struct.pack('<H', 1) + red)
+open(d + '/blue.bin', 'wb').write(blue)
+open(d + '/red.bin', 'wb').write(red)
+PY
+        cp "$TMP/blue.bin" "$TMP/fb_fade"
+        BE3600_FB="$TMP/fb_fade" BE3600_LOOPS=1 "$TMP/player-native" --fade 300 "$TMP/red.bea" >/dev/null 2>&1
+        if cmp -s "$TMP/fb_fade" "$TMP/red.bin"; then pass "--fade ends exactly on the new picture"; else fail "--fade did not end on the new picture"; fi
+
+        # Stopped part-way through a longer fade, the screen must be strictly between
+        # the two pictures: neither still the old one nor already the new one.
+        cp "$TMP/blue.bin" "$TMP/fb_mid"
+        BE3600_FB="$TMP/fb_mid" BE3600_LOOPS=1 "$TMP/player-native" --fade 1500 "$TMP/red.bea" >/dev/null 2>&1 &
+        FADER=$!
+        sleep 0.6
+        kill -TERM "$FADER" 2>/dev/null
+        wait "$FADER" 2>/dev/null
+        MID="$(python3 -c "
+import sys
+d = open(sys.argv[1], 'rb').read()
+print('%02x%02x' % (d[1], d[0]))
+" "$TMP/fb_mid")"
+        case "$MID" in
+            001f|f800) fail "mid-fade, the screen is still one endpoint ($MID), not a blend" ;;
+            *) pass "mid-fade the screen is a blend, neither endpoint ($MID)" ;;
+        esac
     else
         fail "native player does not compile cleanly: $(cat "$TMP/cc.log")"
     fi
@@ -195,13 +230,168 @@ WHICH="$(BE3600_SYS_INPUT="$TMP/nowhere" "$LUA" router/usr/bin/be3600-wait-touch
 case "$WHICH" in "/dev/input/event0 "*) pass "falls back to event0 when nothing matches" ;; *) fail "fallback gave: $WHICH" ;; esac
 
 
+echo "== waiting for the finger to lift (--wait-release) =="
+# A FIFO stands in for the touch device (it blocks a reader like the real one does).
+# Events are 24 bytes: 16 (timestamp, unused) + type + code + value.
+# EV_ABS(3) / ABS_MT_TRACKING_ID(57): 0 = a finger is down, -1 = it lifted.
+python3 - "$TMP" <<'PY'
+import struct, sys
+d = sys.argv[1]
+open(d + '/press.bin', 'wb').write(b'\0' * 16 + struct.pack('<HHi', 3, 57, 0))
+open(d + '/release.bin', 'wb').write(b'\0' * 16 + struct.pack('<HHi', 3, 57, -1))
+PY
+mkfifo "$TMP/fakedev"
+
+# Finger goes down and STAYS down: --wait-release must keep waiting, not return.
+( cat "$TMP/press.bin"; sleep 3 ) > "$TMP/fakedev" &
+WRITER=$!
+TOUCH_DEVICE="$TMP/fakedev" timeout 1 "$LUA" router/usr/bin/be3600-wait-touch.lua --wait-release >/dev/null 2>&1
+RC=$?
+kill "$WRITER" 2>/dev/null; wait "$WRITER" 2>/dev/null
+if [ "$RC" -eq 124 ]; then pass "a finger that is still down is not mistaken for a lift"; else fail "--wait-release returned $RC while the finger was down"; fi
+
+# Finger goes down, then lifts: it must return (exit 0) once it lifts.
+( cat "$TMP/press.bin"; sleep 0.3; cat "$TMP/release.bin" ) > "$TMP/fakedev" &
+WRITER=$!
+TOUCH_DEVICE="$TMP/fakedev" timeout 3 "$LUA" router/usr/bin/be3600-wait-touch.lua --wait-release >/dev/null 2>&1
+RC=$?
+wait "$WRITER" 2>/dev/null
+if [ "$RC" -eq 0 ]; then pass "returns once the finger lifts"; else fail "--wait-release returned $RC after a lift"; fi
+
+rm -f "$TMP/fakedev"
+
+
+echo "== switching between saved animations (a single tap) =="
+sed -n '/^next_library_animation() {/,/^}/p' router/usr/bin/be3600-screensaver > "$TMP/rotate.sh"
+# shellcheck source=/dev/null
+. "$TMP/rotate.sh"
+
+# Named a, b, c because the function walks the library in alphabetical (glob) order.
+mkdir -p "$TMP/lib"
+echo first  > "$TMP/lib/a.bea"
+echo second > "$TMP/lib/b.bea"
+echo third  > "$TMP/lib/c.bea"
+
+# Exported so they are visibly "used" (the function reads them, but it is loaded from
+# a separate file at run time, which a linter cannot follow).
+export LIB="$TMP/lib"
+
+export ANIMATION="$TMP/lib/a.bea"
+OUT="$(next_library_animation)"; case "$OUT" in "$TMP/lib/b.bea") pass "a -> b" ;; *) fail "a -> $OUT" ;; esac
+
+export ANIMATION="$TMP/lib/b.bea"
+OUT="$(next_library_animation)"; case "$OUT" in "$TMP/lib/c.bea") pass "b -> c" ;; *) fail "b -> $OUT" ;; esac
+
+export ANIMATION="$TMP/lib/c.bea"
+OUT="$(next_library_animation)"; case "$OUT" in "$TMP/lib/a.bea") pass "c wraps back to a" ;; *) fail "c -> $OUT" ;; esac
+
+export ANIMATION="$TMP/not-in-the-library.bea"
+OUT="$(next_library_animation)"; case "$OUT" in "$TMP/lib/a.bea") pass "an unrecognized active file defaults to the first" ;; *) fail "unrecognized -> $OUT" ;; esac
+
+rm -f "$TMP/lib/b.bea" "$TMP/lib/c.bea"
+export ANIMATION="$TMP/lib/a.bea"
+OUT="$(next_library_animation)"; if [ -z "$OUT" ]; then pass "with only one saved animation, there is nothing to switch to"; else fail "one animation gave: $OUT"; fi
+
+rm -f "$TMP/lib/a.bea"
+OUT="$(next_library_animation)"; if [ -z "$OUT" ]; then pass "with an empty library, there is nothing to switch to"; else fail "empty library gave: $OUT"; fi
+
+
+echo "== a second tap within the window is a double-tap; one tap alone is not =="
+# Exercises the real timing path (second_tap_follows, using the real "timeout" and
+# the real touch helper) against a FIFO standing in for /dev/input/eventN, since a
+# FIFO blocks a reader exactly like the real device does until something is sent
+# or the timeout fires.
+sed -n '/^second_tap_follows() {/,/^}/p' router/usr/bin/be3600-screensaver > "$TMP/tap.sh"
+# shellcheck source=/dev/null
+. "$TMP/tap.sh"
+
+export TOUCH="router/usr/bin/be3600-wait-touch.lua"
+export DOUBLE_TAP_WINDOW_SECONDS=1
+mkfifo "$TMP/fakeinput"
+export TOUCH_DEVICE="$TMP/fakeinput"
+
+# second_tap_follows() (like the rest of this script) runs on the router, where the
+# interpreter is always /usr/bin/lua. Provide that path here too, if it is not
+# already there, so this test exercises the function's real, unmodified content
+# rather than a stand-in. Skips cleanly if it is missing and cannot be created
+# (no root) rather than failing the whole suite.
+CREATED_SYSTEM_LUA=0
+if [ ! -e /usr/bin/lua ]; then
+    LUA_ABS="$(command -v "$LUA" 2>/dev/null)"
+    if [ -n "$LUA_ABS" ] && ln -s "$LUA_ABS" /usr/bin/lua 2>/dev/null; then
+        CREATED_SYSTEM_LUA=1
+    fi
+fi
+
+if [ -e /usr/bin/lua ]; then
+
+    # A touch-down event: 16 zero bytes (timestamp, unused here), EV_ABS(3),
+    # ABS_MT_TRACKING_ID(57), value 0.
+    python3 -c "
+import struct, sys
+sys.stdout.buffer.write(b'\\0' * 16 + struct.pack('<HHi', 3, 57, 0))
+" > "$TMP/touch_event.bin"
+
+    # Case 1: a second tap arrives quickly -> counts as a double-tap.
+    ( sleep 0.2; cat "$TMP/touch_event.bin" > "$TMP/fakeinput" ) &
+    WRITER=$!
+    if second_tap_follows; then pass "a prompt second tap is recognized (double-tap)"; else fail "a prompt second tap was missed"; fi
+    wait "$WRITER" 2>/dev/null
+
+    # Case 2: nothing follows -> times out, not a double-tap. (Runs for the real
+    # 1-second window; unavoidable since this is what is being tested.)
+    if second_tap_follows; then fail "silence was mistaken for a second tap"; else pass "silence within the window is correctly not a double-tap"; fi
+
+    # Case 3: a fractional window (what config.default actually uses) is honored,
+    # not just silently rounded away.
+    export DOUBLE_TAP_WINDOW_SECONDS=0.3
+    ( sleep 0.1; cat "$TMP/touch_event.bin" > "$TMP/fakeinput" ) &
+    WRITER=$!
+    if second_tap_follows; then pass "a fractional window (0.3s) works"; else fail "a fractional window was not honored"; fi
+    wait "$WRITER" 2>/dev/null
+
+    # And a malformed value falls back to a safe default instead of erroring out.
+    export DOUBLE_TAP_WINDOW_SECONDS="nonsense"
+    ( sleep 0.1; cat "$TMP/touch_event.bin" > "$TMP/fakeinput" ) &
+    WRITER=$!
+    if second_tap_follows; then pass "a malformed window value still works (falls back to a default)"; else fail "a malformed window value broke detection"; fi
+    wait "$WRITER" 2>/dev/null
+else
+    echo "  skip  /usr/bin/lua is not available here and could not be created (no root)"
+fi
+
+[ "$CREATED_SYSTEM_LUA" = 1 ] && rm -f /usr/bin/lua
+rm -f "$TMP/fakeinput"
+unset TOUCH_DEVICE
+
+
+echo "== Studio Link (the helper behind Motion Studio's drop zone) =="
+if python3 tests/studio_link_test.py >"$TMP/studio-link.log" 2>&1; then
+    pass "studio_link.py: $(grep -c '^  ok' "$TMP/studio-link.log") checks pass"
+else
+    fail "Studio Link tests failed: $(grep FAIL "$TMP/studio-link.log")"
+fi
+
+
+echo "== Motion Studio's GIF decoder, checked against Pillow =="
+if command -v node >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null; then
+    if python3 tests/make_gif_fixtures.py "$TMP/gif" >/dev/null 2>&1 && node tests/gif_decoder.test.js "$TMP/gif" >"$TMP/gif.log" 2>&1; then
+        pass "GIF decoder: $(grep -c '^  ok' "$TMP/gif.log") checks pass"
+    else
+        fail "GIF decoder tests failed: $(grep FAIL "$TMP/gif.log")"
+    fi
+else
+    echo "  skip  needs node and Pillow (pip install pillow)"
+fi
+
+
 echo "== line endings: nothing the router reads may contain a carriage return =="
-BADCR="$(grep -rlI "$(printf '\r')" router setup tests tools/*.py tools/make-sample-bea.py install.sh set-animation.sh docs README.md 2>/dev/null)"
+BADCR="$(grep -rlI "$(printf '\r')" router setup tests tools/*.py tools/make-sample-bea.py install.sh set-animation.sh studio-link.sh docs README.md 2>/dev/null)"
 if [ -z "$BADCR" ]; then pass "no CR characters in router/, setup/, scripts or docs"; else fail "CR found in: $BADCR"; fi
 
 
 echo "== shell syntax =="
-for f in install.sh set-animation.sh setup/router-install.sh setup/router-uninstall.sh \
+for f in install.sh set-animation.sh studio-link.sh setup/router-install.sh setup/router-uninstall.sh \
          router/usr/bin/be3600-screensaver router/usr/sbin/be3600-anim router/etc/init.d/be3600-screensaver; do
     if sh -n "$f" 2>/dev/null; then pass "$f"; else fail "$f does not parse"; fi
 done

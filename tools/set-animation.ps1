@@ -82,9 +82,7 @@ while ($true) {
 
     # The file's name (letters, digits . _ - only, so it is safe in a shell command)
     # becomes its name in the router's library.
-    $libName = ([System.IO.Path]::GetFileNameWithoutExtension($name) -replace '[^A-Za-z0-9._-]+', '-').Trim('-')
-    if (-not $libName) { $libName = 'animation' }
-    if ($libName.Length -gt 40) { $libName = $libName.Substring(0, 40) }
+    $libName = ConvertTo-LibName $name
     $remote = "cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea $libName && rm -f /tmp/be3600-new.bea"
     $code = Invoke-RouterSsh -Router $ip -Remote $remote -InputFile $Path -Key $Key
 
@@ -98,7 +96,7 @@ while ($true) {
             ('  {0}' -f $name),
             ('  {0:N1} seconds per loop, shows after a few idle seconds' -f $info.Seconds),
             '',
-            'Touch the screen to dismiss it, and it comes back later.'
+            'Tap for the next animation, double-tap to dismiss it.'
         ) 'Green'
     }
     elseif ($code -eq 255) {

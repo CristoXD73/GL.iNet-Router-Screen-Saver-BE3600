@@ -127,7 +127,7 @@ while :; do
     if [ "$RC" -eq 0 ]; then
         mkdir -p "$(dirname "$STATE_FILE")" && printf '%s\n' "$ROUTER" > "$STATE_FILE"
         DONE=$((DONE + 1))
-        printf '  %sDone - your animation is on the router.%s Touch the screen to dismiss it; it comes back later.\n' "$GR" "$RS"
+        printf '  %sDone - your animation is on the router.%s Tap the screen for the next animation, double-tap to dismiss it.\n' "$GR" "$RS"
     elif [ "$RC" -eq 255 ]; then
         printf '  %sCould not connect or log in.%s\n' "$RD" "$RS"; ROUTER=""
     else

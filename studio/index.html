@@ -49,19 +49,54 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
   .dual-control{min-width:125px}
 }
 
+
+/* --- Send to router: the drop square (talks to Studio Link on this computer) --- */
+.send-zone{display:grid;grid-template-columns:104px 1fr;gap:14px;align-items:center;margin-top:14px;padding:13px;border-radius:16px;background:rgba(255,255,255,.48);box-shadow:inset 0 0 0 1px var(--line)}
+.drop-square{width:104px;height:104px;border-radius:18px;border:2px dashed rgba(18,21,29,.28);display:grid;place-items:center;align-content:center;gap:3px;cursor:pointer;color:var(--muted);font-size:8px;font-weight:800;background:rgba(255,255,255,.4);transition:.15s;user-select:none}
+.drop-square svg{width:34px;height:34px}
+.drop-square:hover,.drop-square:focus-visible,.optimizer.dragging .drop-square{border-color:var(--text);color:var(--text);background:rgba(255,255,255,.85);outline:none}
+.optimizer.dragging .drop-square{transform:scale(1.04)}
+.send-info strong{display:block;font-size:11px;margin:2px 0 3px;letter-spacing:-.01em}
+.send-info small{display:block;font-size:8px;line-height:1.5;color:var(--muted)}
+.send-row{display:flex;gap:7px;margin-top:8px;align-items:center;flex-wrap:wrap}
+.send-row input{height:32px;border:0;border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);background:rgba(255,255,255,.7);padding:0 10px;font-size:9px;min-width:130px}
+.link-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#b9bcc4;margin-right:6px;vertical-align:1px}
+.link-dot.on{background:#1fb655;box-shadow:0 0 0 3px rgba(31,182,85,.18)}
+.link-dot.bad{background:#d6304a;box-shadow:0 0 0 3px rgba(214,48,74,.16)}
+#sendResult{margin-top:7px;min-height:1.4em;font-weight:700}
+#sendResult.ok{color:#178a41}
+#sendResult.err{color:#c0263f}
+.optimizer{max-height:calc(100vh - 28px);overflow-y:auto}
+/* Logo: two little robot eyes that glance around and blink on their own. */
+.mark{overflow:hidden}
+.mark .pair{display:flex;gap:6px;animation:botLook 8s ease-in-out infinite}
+.mark .bot-eye{display:block;width:8px;height:13px;border-radius:5px;background:#fff;box-shadow:0 0 7px rgba(120,190,255,.75);animation:botBlink 5.3s infinite;transform-origin:center}
+.mark .bot-eye:nth-child(2){animation-delay:.04s}
+@keyframes botLook{0%,10%{transform:translate(0,0)}16%,30%{transform:translate(-3px,-1px)}36%,50%{transform:translate(3px,1px)}56%,64%{transform:translate(0,-2px)}70%,78%{transform:translate(-2px,2px)}86%,100%{transform:translate(0,0)}}
+@keyframes botBlink{0%,88%,100%{transform:scaleY(1)}91%,94%{transform:scaleY(.08)}}
+@media (prefers-reduced-motion:reduce){.mark .pair,.mark .bot-eye{animation:none}}
+/* --- GIF tab --- */
+.gif-host{position:absolute;inset:0;width:100%;height:100%;display:block}
+.gif-empty{position:absolute;inset:0;z-index:2;display:grid;place-items:center;align-content:center;gap:7px;text-align:center;cursor:pointer;color:#fff;background:rgba(5,6,8,.74);font-size:11px;font-weight:800;letter-spacing:.04em;padding:0 14px}
+.gif-empty svg{width:34px;height:34px}
+.gif-empty:hover,.gif-empty:focus-visible,.preview.dragging-gif .gif-empty{background:rgba(5,6,8,.6);outline:2px dashed rgba(255,255,255,.7);outline-offset:-10px}
+#gifDock .effect-list button{min-width:44px}
+
+@media (max-width:640px){.send-zone{grid-template-columns:1fr}.drop-square{width:100%;height:84px}}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="topbar glass">
     <div class="brand">
-      <div class="mark"><span></span></div>
+      <div class="mark" aria-hidden="true"><div class="pair"><i class="bot-eye"></i><i class="bot-eye"></i></div></div>
       <div><div class="eyebrow">GL-BE3600</div><strong>Motion Studio</strong></div>
     </div>
 
     <div class="engine-tabs">
       <button data-engine="ambient" class="active">Atmosphere</button>
       <button data-engine="eyes">Robot Eyes</button>
+      <button data-engine="gif">GIF</button>
     </div>
 
     <div class="top-actions">
@@ -89,6 +124,12 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
             <g id="eyeGlow" opacity=".22"></g>
             <g id="eyeGroup"></g>
           </svg>
+
+                    <canvas id="gifHost" class="gif-host hidden" width="284" height="76" aria-label="GIF preview"></canvas>
+          <div id="gifEmpty" class="gif-empty hidden" role="button" tabindex="0" aria-label="Choose a GIF">
+            <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M17 6v22M6 17h22"/></svg>
+            <span>Drop a GIF here, or click to choose one</span>
+          </div>
 
           <div class="screen-vignette"></div>
 
@@ -177,6 +218,34 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
         </div>
       </div>
 
+            <div id="gifDock" class="dock-content">
+        <div class="dock-section preset-info">
+          <div class="eyebrow">GIF</div>
+          <h2 id="gifTitle">Bring in a GIF</h2>
+          <p id="gifCopy">Drop a GIF on the preview or choose one. The compiler fits it to the strip.</p>
+        </div>
+
+        <div class="dock-section effect-list" id="gifFits" role="group" aria-label="How the GIF fits the strip">
+          <button data-gif-fit="cover" class="active" title="Fill the whole strip, cropping the edges">Fill</button>
+          <button data-gif-fit="contain" title="Show the whole GIF, with bars if needed">Fit</button>
+          <button data-gif-fit="stretch" title="Squash it to the strip's shape">Stretch</button>
+        </div>
+
+        <div class="dock-section dual-control">
+          <label><span>Speed <b id="gifSpeedOut">1.0×</b></span><input id="gifSpeed" type="range" min="25" max="300" value="100"></label>
+          <label><span>Focus <b id="gifFocusOut">50%</b></span><input id="gifFocus" type="range" min="0" max="100" value="50"></label>
+        </div>
+
+        <div class="dock-section palette">
+          <div class="eyebrow">Background</div>
+          <div class="colors">
+            <input id="gifBg" type="color" value="#000000">
+            <button id="gifChoose" type="button">Choose GIF</button>
+          </div>
+        </div>
+        <input id="gifPicker" type="file" accept="image/gif,.gif" hidden>
+      </div>
+
       <div class="dock-actions">
         <button class="soft-btn" id="saveBtn">Save</button>
         <button class="dark-btn" id="optimizerBtn">Optimizer</button>
@@ -194,7 +263,7 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
 
     <section class="optimizer glass hidden" id="optimizer">
       <div class="optimizer-head">
-        <div><div class="eyebrow">Deployment compiler</div><h2>Make it cheap before the modem sees it.</h2></div>
+        <div><div class="eyebrow">Compiler and optimizer</div><h2>Create your video</h2></div>
         <button id="closeOptimizer" class="close-btn">×</button>
       </div>
 
@@ -233,6 +302,24 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
         <button class="soft-btn" id="exportManifest">Export manifest</button>
          <button class="dark-btn" id="compileBE3600">Compile BE3600 Pack</button>
       </div>
+      <div class="send-zone" id="sendZone">
+        <div class="drop-square" id="dropSquare" tabindex="0" role="button" aria-label="Drop a .bea file here, or click to choose one, to send it to your router">
+          <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M17 6v22M6 17h22"/></svg>
+          <span>Drop a .bea here</span>
+        </div>
+        <input id="beaPicker" type="file" accept=".bea" hidden>
+        <div class="send-info" aria-live="polite">
+          <div class="eyebrow">Send to your router</div>
+          <strong id="linkState"><i class="link-dot"></i>Checking for Studio Link...</strong>
+          <small id="linkHelp"></small>
+          <div class="send-row hidden" id="sendRow">
+            <input id="sendName" type="text" maxlength="40" placeholder="Name on the router" aria-label="Name on the router" value="my-animation">
+            <button class="dark-btn" id="sendLast" type="button">Send what I just compiled</button>
+          </div>
+          <small id="sendResult"></small>
+        </div>
+      </div>
+
     </section>
   </main>
 
@@ -747,7 +834,7 @@ class BE3600RobotEyes{
  }
  path(s){
   const x=s.cx-s.w/2,y=s.cy-s.h/2,w=s.w,h=s.h,r=Math.min(s.r,h/2,w/2),slope=s.tilt*w*.21;
-  const tl=y+(s.tilt<0?Math.abs(slope):0)+s.topCrop*h,tr=y+(s.tilt>0?Math.abs(slope):0)+s.topCrop*h,by=y+h-s.cutBottom*h;
+  const tl=y+(s.tilt>0?Math.abs(slope):0)+s.topCrop*h,tr=y+(s.tilt<0?Math.abs(slope):0)+s.topCrop*h,by=y+h-s.cutBottom*h;
   return `M${x+r},${tl} L${x+w-r},${tr} Q${x+w},${tr} ${x+w},${tr+r} L${x+w},${by-r} Q${x+w},${by} ${x+w-r},${by} L${x+r},${by} Q${x},${by} ${x},${by-r} L${x},${tl+r} Q${x},${tl} ${x+r},${tl}Z`;
  }
  lidPath(s,p,side){
@@ -758,7 +845,7 @@ class BE3600RobotEyes{
   if(this.baseName==='sad'||this.baseName==='worried')lid=.16;
   const slope=side==='left'?(p.tiltL??0):(p.tiltR??0);
   const yy=y+h*lid;
-  return `M${x},${y-2} H${x+w} V${yy+(slope>0?h*.12:0)} Q${s.cx},${yy-(slope*h*.10)} ${x},${yy+(slope<0?h*.12:0)}Z`;
+  return `M${x},${y-2} H${x+w} V${yy+(slope<0?h*.12:0)} Q${s.cx},${yy+(Math.abs(slope)*h*.20)} ${x},${yy+(slope>0?h*.12:0)}Z`;
  }
  render(t,dt){
   const p=this.mix(t);
@@ -841,12 +928,12 @@ function setupEyes(){
 function switchEngine(name){
  state.engine=name;
  $$('.engine-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.engine===name));
- $('#ambientDock').classList.toggle('active',name==='ambient');$('#eyesDock').classList.toggle('active',name==='eyes');
+ $('#ambientDock').classList.toggle('active',name==='ambient');$('#eyesDock').classList.toggle('active',name==='eyes');$('#gifDock').classList.toggle('active',name==='gif');
  $('#ambientHost').classList.toggle('hidden',name!=='ambient');$('#eyesHost').classList.toggle('hidden',name!=='eyes');
- $('#sourceLabel').textContent=name==='ambient'?'Vanta.js · MIT':'Open eye libraries · MIT';
- $('#sceneMode').textContent=name==='ambient'?'FULL BLEED':'VECTOR EYES';
+ $('#sourceLabel').textContent=name==='ambient'?'Vanta.js · MIT':name==='gif'?'Your GIF':'Open eye libraries · MIT';
+ $('#sceneMode').textContent=name==='ambient'?'FULL BLEED':name==='gif'?'FIT TO STRIP':'VECTOR EYES';
  if(name==='ambient'){makeVanta();$('#sceneName').textContent=scenes[state.effect].name}
- else{destroyVanta();setupEyes();$('#sceneName').textContent='ROBOT EYES';$('#expressionTitle').textContent=BE3600RobotEyeExpressions[state.eyeExpression].label}
+ else if(name==='eyes'){destroyVanta();setupEyes();$('#sceneName').textContent='ROBOT EYES';$('#expressionTitle').textContent=BE3600RobotEyeExpressions[state.eyeExpression].label}else{destroyVanta();$('#sceneName').textContent='GIF'}document.dispatchEvent(new CustomEvent('be3600-engine',{detail:name}));
 }
 $$('.engine-tabs button').forEach(b=>b.onclick=()=>switchEngine(b.dataset.engine));
 $$('[data-effect]').forEach(b=>b.onclick=()=>{state.effect=b.dataset.effect;$$('[data-effect]').forEach(x=>x.classList.toggle('active',x===b));makeVanta()});
@@ -1064,15 +1151,11 @@ async function captureAmbient(ctx) {
 
 function activeEngine() {
 
-    const eyes =
-        document.querySelector(
-            '.engine-tabs button[data-engine="eyes"]'
-        );
+    const on = n =>
+        document.querySelector('.engine-tabs button[data-engine="' + n + '"]')
+            ?.classList.contains('active');
 
-    return eyes &&
-           eyes.classList.contains('active')
-        ? 'eyes'
-        : 'ambient';
+    return on('gif') ? 'gif' : on('eyes') ? 'eyes' : 'ambient';
 }
 
 function buildPack(records, fps) {
@@ -1220,7 +1303,7 @@ async function compileBE3600() {
         Number(
             prompt(
                 "How many seconds should this loop contain? (1 to 25)",
-                "5"
+                (activeEngine() === 'gif' && window.BE3600_gifSuggestSeconds ? String(window.BE3600_gifSuggestSeconds()) : "5")
             )
         );
 
@@ -1264,10 +1347,12 @@ async function compileBE3600() {
             button.textContent =
                 `Compiling ${i+1}/${total}`;
 
-            await nextFrame();
+            if (activeEngine() === 'gif') { if (i % 6 === 0) await beSleep(0); } else { await nextFrame(); }
 
             if (activeEngine() === 'eyes') {
                 await window.BE3600_captureEyesSafe(ctx);
+            } else if (activeEngine() === 'gif') {
+                await window.BE3600_captureGif(ctx, i, fps);
             } else {
                 await captureAmbient(ctx);
             }
@@ -1300,7 +1385,7 @@ async function compileBE3600() {
                 records.push(last);
             }
 
-            if (i < total-1) {
+            if (i < total-1 && activeEngine() !== 'gif') {
 
                 await beSleep(
                     Math.max(
@@ -1311,7 +1396,7 @@ async function compileBE3600() {
             }
         }
 
-        const pack = buildPackBea2(records,fps);
+        const pack = buildPackBea2(records,fps); window.__be3600LastPack = { bytes: pack, name: 'be3600-active.bea' }; document.dispatchEvent(new CustomEvent('be3600-compiled'));
 
         const blob =
             new Blob(
@@ -1711,6 +1796,405 @@ window.BE3600_captureEyesSafe = async function(ctx) {
 console.log(
     "BE3600 direct eye compiler installed."
 );
+</script>
+
+<script>
+/* Send to router: drop a .bea on the square and it goes to your router through
+ * Studio Link, a small helper that runs on THIS computer (Studio-Link.cmd). The
+ * page only ever talks to 127.0.0.1; your router password is typed into the
+ * helper's own window, never into this page. */
+(function () {
+  'use strict';
+
+  var LINK = 'http://127.0.0.1:8791';
+  var $ = function (id) { return document.getElementById(id); };
+  var square = $('dropSquare'), picker = $('beaPicker'), state = $('linkState'), help = $('linkHelp');
+  var result = $('sendResult'), nameBox = $('sendName'), lastBtn = $('sendLast'), row = $('sendRow'), panel = $('optimizer');
+  if (!square || !panel) return;
+
+  var linkOk = false, busy = false, last = null;
+
+  function setState(kind, text, helpText) {
+    state.textContent = '';
+    var dot = document.createElement('i');
+    dot.className = 'link-dot ' + kind;
+    state.appendChild(dot);
+    state.appendChild(document.createTextNode(text));
+    help.textContent = helpText || '';
+  }
+
+  function say(kind, text) { result.className = kind; result.textContent = text; }
+
+  function timed(url, opts, ms) {
+    var c = new AbortController(), t = setTimeout(function () { c.abort(); }, ms);
+    opts.signal = c.signal;
+    return fetch(url, opts).finally(function () { clearTimeout(t); });
+  }
+
+  function checkLink() {
+    if (busy) return;
+    timed(LINK + '/ping', { mode: 'cors' }, 2000)
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || j.app !== 'be3600-studio-link') throw new Error('not Studio Link');
+        linkOk = true;
+        setState('on', 'Studio Link is connected',
+          j.dryRun ? 'Test mode: files are checked but not sent.' : 'Drop a .bea file on the square and it goes to your router.');
+      })
+      .catch(function () {
+        linkOk = false;
+        setState('bad', 'Studio Link is not running',
+          'Double-click Studio-Link.cmd in the project folder and leave its window open; this connects by itself. ' +
+          'If your browser asks about devices on your local network, choose Allow. ' +
+          'Or save the file and drag it onto Set-Animation.cmd instead.');
+      });
+  }
+
+  function checkBea(b) {
+    if (b.length < 12) return 'That file is too small to be a .bea animation.';
+    if (b.length > 32 * 1024 * 1024) return 'That file is far too big to be an animation.';
+    var m = String.fromCharCode(b[0], b[1], b[2], b[3]);
+    if (m !== 'BEA1' && m !== 'BEA2') return 'That is not a .bea animation.';
+    var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    if (dv.getUint32(8, true) !== 43168) return 'Its frames are the wrong size for this display.';
+    var fps = dv.getUint16(4, true);
+    if (fps < 1 || fps > 24) return 'Its speed must be 1 to 24 frames per second.';
+    return null;
+  }
+
+  function cleanName(s) {
+    var n = String(s || '').replace(/\.[^.]*$/, function (e) { return /^\.bea$/i.test(e) ? '' : e; })
+      .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+    return (n || 'animation').slice(0, 40);
+  }
+
+  function send(bytes, name) {
+    if (busy) { say('err', 'One at a time: wait for the current send to finish.'); return; }
+    var problem = checkBea(bytes);
+    if (problem) { say('err', problem); return; }
+    if (!linkOk) { say('err', 'Studio Link is not running yet (see above).'); checkLink(); return; }
+
+    busy = true;
+    say('', 'Sending "' + name + '"... if the Studio Link window asks for your router password, type it there.');
+    timed(LINK + '/send?name=' + encodeURIComponent(name),
+      { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes, mode: 'cors' }, 300000)
+      .then(function (r) {
+        return r.json().catch(function () { return { ok: false, message: 'Unexpected reply from Studio Link.' }; });
+      })
+      .then(function (j) { say(j.ok ? 'ok' : 'err', j.message || (j.ok ? 'Sent.' : 'Not sent.')); })
+      .catch(function () { say('err', 'Lost contact with Studio Link before it finished. Check its window.'); })
+      .finally(function () { busy = false; checkLink(); });
+  }
+
+  function takeFile(file) {
+    if (!file) return;
+    file.arrayBuffer().then(function (buf) { send(new Uint8Array(buf), cleanName(file.name)); });
+  }
+
+  // The square: click (or Enter / Space) to choose a file.
+  square.addEventListener('click', function () { picker.click(); });
+  square.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); picker.click(); }
+  });
+  picker.addEventListener('change', function () { takeFile(picker.files[0]); picker.value = ''; });
+
+  // Dropping: while this panel is open, a file dropped anywhere on the page is
+  // taken (so a slightly missed drop does not make the browser open the file).
+  function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
+  function panelOpen() { return !panel.classList.contains('hidden'); }
+  var depth = 0;
+  window.addEventListener('dragenter', function (e) { if (panelOpen() && hasFiles(e)) { e.preventDefault(); depth++; panel.classList.add('dragging'); } });
+  window.addEventListener('dragover', function (e) { if (panelOpen() && hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('dragleave', function () { depth = Math.max(0, depth - 1); if (!depth) panel.classList.remove('dragging'); });
+  window.addEventListener('drop', function (e) {
+    if (!(panelOpen() && hasFiles(e))) return;
+    e.preventDefault(); depth = 0; panel.classList.remove('dragging');
+    takeFile(e.dataTransfer.files[0]);
+  });
+
+  // The animation you just compiled can be sent without saving it first.
+  document.addEventListener('be3600-compiled', function () {
+    last = window.__be3600LastPack || null;
+    if (last) { row.classList.remove('hidden'); say('', 'Compiled. Name it, then send it, or drop a saved file on the square.'); }
+  });
+  lastBtn.addEventListener('click', function () {
+    if (last) send(last.bytes, cleanName(nameBox.value));
+  });
+
+  // Look for Studio Link now, whenever the panel opens, and every few seconds while open.
+  new MutationObserver(function () { if (panelOpen()) checkLink(); }).observe(panel, { attributes: true, attributeFilter: ['class'] });
+  setInterval(function () { if (panelOpen()) checkLink(); }, 3000);
+  checkLink();
+})();
+</script>
+
+<script>
+/* GIF tab: bring in a GIF and the compiler fits it to the 284 x 76 strip.
+ * Everything runs in your browser; the GIF is never uploaded. */
+(function () {
+  'use strict';
+
+  /* GIF-DECODER-BEGIN */
+  // Standard GIF LZW: codes of growing width (min code size + 1 up to 12 bits) expand to
+  // runs of palette indexes through a prefix/suffix dictionary.
+  function gifLzw(minCode, data, count) {
+    var clear = 1 << minCode, eoi = clear + 1;
+    var prefix = new Int16Array(4096), suffix = new Uint8Array(4096), stack = new Uint8Array(4097);
+    var out = new Uint8Array(count), op = 0;
+    var size = minCode + 1, next = eoi + 1, prev = -1, first = 0;
+    var bits = 0, nbits = 0, ip = 0, i;
+    for (i = 0; i < clear; i++) suffix[i] = i;
+    while (op < count) {
+      while (nbits < size && ip < data.length) { bits |= data[ip++] << nbits; nbits += 8; }
+      if (nbits < size) break;
+      var code = bits & ((1 << size) - 1);
+      bits >>>= size; nbits -= size;
+      if (code === clear) { size = minCode + 1; next = eoi + 1; prev = -1; continue; }
+      if (code === eoi) break;
+      var cur = code, sp = 0;
+      if (prev === -1) { first = suffix[cur]; out[op++] = first; prev = code; continue; }
+      if (cur >= next) { stack[sp++] = first; cur = prev; }
+      while (cur >= clear) { stack[sp++] = suffix[cur]; cur = prefix[cur]; }
+      first = suffix[cur];
+      stack[sp++] = first;
+      while (sp > 0 && op < count) out[op++] = stack[--sp];
+      if (next < 4096) {
+        prefix[next] = prev; suffix[next] = first; next++;
+        if (next === (1 << size) && size < 12) size++;
+      }
+      prev = code;
+    }
+    return out;
+  }
+
+  // Interlaced GIFs store the rows in four passes: every 8th, then every 8th from 4, every 4th from 2, every 2nd from 1.
+  function gifDeinterlace(idx, w, h) {
+    var out = new Uint8Array(idx.length), row = 0, passes = [[0, 8], [4, 8], [2, 4], [1, 2]];
+    for (var p = 0; p < 4; p++) {
+      for (var y = passes[p][0]; y < h; y += passes[p][1]) {
+        out.set(idx.subarray(row * w, row * w + w), y * w);
+        row++;
+      }
+    }
+    return out;
+  }
+
+  // -> { width, height, frames: [{x, y, w, h, ct, idx, delay, transparent, disposal}] }
+  function parseGif(buf) {
+    var b = new Uint8Array(buf), p = 13;
+    if (b.length < 14 || String.fromCharCode(b[0], b[1], b[2]) !== 'GIF') throw new Error('That is not a GIF file.');
+    var W = b[6] | (b[7] << 8), H = b[8] | (b[9] << 8), flags = b[10], gct = null;
+    if (flags & 0x80) { var n = 3 << ((flags & 7) + 1); gct = b.subarray(p, p + n); p += n; }
+    var frames = [], gce = null;
+    while (p < b.length) {
+      var t = b[p++];
+      if (t === 0x3B) break;
+      if (t === 0x21) {
+        var label = b[p++];
+        if (label === 0xF9 && b[p] >= 4) {
+          var f = b[p + 1];
+          gce = { delay: (b[p + 2] | (b[p + 3] << 8)) * 10, transparent: (f & 1) ? b[p + 4] : -1, disposal: (f >> 2) & 7 };
+        }
+        while (p < b.length && b[p] !== 0) p += b[p] + 1;
+        p++;
+      } else if (t === 0x2C) {
+        var x = b[p] | (b[p + 1] << 8), y = b[p + 2] | (b[p + 3] << 8);
+        var w = b[p + 4] | (b[p + 5] << 8), h = b[p + 6] | (b[p + 7] << 8), lf = b[p + 8];
+        p += 9;
+        var ct = gct;
+        if (lf & 0x80) { var m = 3 << ((lf & 7) + 1); ct = b.subarray(p, p + m); p += m; }
+        var minCode = b[p++], chunks = [], total = 0, c;
+        while (p < b.length && b[p] !== 0) { chunks.push(b.subarray(p + 1, p + 1 + b[p])); total += b[p]; p += b[p] + 1; }
+        p++;
+        var data = new Uint8Array(total), o = 0;
+        for (c = 0; c < chunks.length; c++) { data.set(chunks[c], o); o += chunks[c].length; }
+        if (!ct || minCode < 2 || minCode > 8) throw new Error('This GIF looks damaged.');
+        var idx = gifLzw(minCode, data, w * h);
+        if (lf & 0x40) idx = gifDeinterlace(idx, w, h);
+        frames.push({ x: x, y: y, w: w, h: h, ct: ct, idx: idx,
+          delay: gce ? gce.delay : 0, transparent: gce ? gce.transparent : -1, disposal: gce ? gce.disposal : 0 });
+        gce = null;
+      } else {
+        break;                                  // something unknown: keep what we have
+      }
+    }
+    if (!frames.length) throw new Error('That GIF has no pictures in it.');
+    if (!W || !H) { W = frames[0].w; H = frames[0].h; }
+    return { width: W, height: H, frames: frames };
+  }
+
+  // Builds each complete picture in turn (frames are often only the part that changed) and
+  // hands it over: emit(rgba, delayMs, index). rgba is a fresh copy every time.
+  function gifCompose(g, emit) {
+    var W = g.width, H = g.height, canvas = new Uint8ClampedArray(W * H * 4), i, x, y;
+    for (i = 0; i < g.frames.length; i++) {
+      var f = g.frames[i], ct = f.ct;
+      var saved = f.disposal === 3 ? canvas.slice() : null;
+      for (y = 0; y < f.h; y++) {
+        var cy = f.y + y;
+        if (cy >= H) break;
+        for (x = 0; x < f.w; x++) {
+          var cx = f.x + x;
+          if (cx >= W) break;
+          var k = f.idx[y * f.w + x];
+          if (k === f.transparent) continue;
+          var d = (cy * W + cx) * 4;
+          canvas[d] = ct[k * 3]; canvas[d + 1] = ct[k * 3 + 1]; canvas[d + 2] = ct[k * 3 + 2]; canvas[d + 3] = 255;
+        }
+      }
+      emit(canvas.slice(), f.delay <= 10 ? 100 : f.delay, i);       // browsers treat 0-10 ms as 100 ms
+      if (f.disposal === 2) {
+        for (y = 0; y < f.h && f.y + y < H; y++) {
+          for (x = 0; x < f.w && f.x + x < W; x++) canvas.fill(0, ((f.y + y) * W + f.x + x) * 4, ((f.y + y) * W + f.x + x) * 4 + 4);
+        }
+      } else if (f.disposal === 3 && saved) {
+        canvas.set(saved);
+      }
+    }
+  }
+  /* GIF-DECODER-END */
+
+  var $ = function (id) { return document.getElementById(id); };
+  var host = $('gifHost'), empty = $('gifEmpty'), picker = $('gifPicker'), dock = $('gifDock'), preview = $('preview');
+  if (!host || !dock) return;
+  var hctx = host.getContext('2d');
+  var W = 284, H = 76;
+
+  var S = { bitmaps: [], delays: [], starts: [], duration: 0, name: '', w: 0, h: 0 };
+  var opts = { fit: 'cover', focus: 50, speed: 1, bg: '#000000' };
+  var active = false, t0 = 0, raf = 0;
+
+  function say(title, copy) { $('gifTitle').textContent = title; $('gifCopy').textContent = copy; }
+
+  // Which picture is showing after tMs of the loop.
+  function indexAt(tMs) {
+    var lo = 0, hi = S.starts.length - 1;
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (S.starts[mid] <= tMs) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
+
+  // Draws one picture onto a 284 x 76 canvas: Fill crops to cover the strip, Fit shows all of it on the
+  // background colour, Stretch squashes it to size.
+  function drawFit(ctx, bm) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = opts.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    var iw = bm.width, ih = bm.height, dw, dh, dx, dy;
+    if (opts.fit === 'stretch') { dw = W; dh = H; dx = 0; dy = 0; }
+    else {
+      var sc = opts.fit === 'contain' ? Math.min(W / iw, H / ih) : Math.max(W / iw, H / ih);
+      dw = iw * sc; dh = ih * sc;
+      var fx = opts.fit === 'cover' ? opts.focus / 100 : 0.5;
+      dx = (W - dw) * fx; dy = (H - dh) * fx;
+    }
+    ctx.drawImage(bm, dx, dy, dw, dh);
+    ctx.restore();
+  }
+
+  function showAt(tMs) {
+    if (!S.bitmaps.length) return;
+    drawFit(hctx, S.bitmaps[indexAt(S.duration ? tMs % S.duration : 0)]);
+  }
+
+  function loop(now) {
+    raf = 0;
+    if (!active) return;
+    showAt((now - t0) * opts.speed);
+    raf = requestAnimationFrame(loop);
+  }
+  function start() { if (!raf && active) { t0 = performance.now(); raf = requestAnimationFrame(loop); } }
+
+  function load(file) {
+    if (!file) return;
+    if (file.size > 64 * 1024 * 1024) { say('That GIF is too big', 'Try one under 64 MB.'); return; }
+    say('Reading ' + file.name + '...', 'One moment.');
+    file.arrayBuffer().then(function (buf) {
+      var g = parseGif(buf);
+      if (g.frames.length > 1500) throw new Error('That GIF has ' + g.frames.length + ' pictures; the limit is 1500.');
+      // Very large GIFs are shrunk so they fit in memory; the strip is tiny anyway.
+      var budget = 160 * 1024 * 1024, per = g.width * g.height * 4, sc = Math.min(1, Math.sqrt(budget / (per * g.frames.length)));
+      var tw = Math.max(1, Math.round(g.width * sc)), th = Math.max(1, Math.round(g.height * sc));
+      var tmp = document.createElement('canvas'); tmp.width = g.width; tmp.height = g.height;
+      var tctx = tmp.getContext('2d'), chain = Promise.resolve(), bitmaps = [], delays = [];
+      gifCompose(g, function (rgba, delay) {
+        chain = chain.then(function () {
+          tctx.putImageData(new ImageData(rgba, g.width, g.height), 0, 0);
+          return createImageBitmap(tmp, sc < 1 ? { resizeWidth: tw, resizeHeight: th, resizeQuality: 'high' } : undefined);
+        }).then(function (bm) { bitmaps.push(bm); delays.push(delay); });
+      });
+      return chain.then(function () {
+        S.bitmaps.forEach(function (b) { if (b.close) b.close(); });
+        S.bitmaps = bitmaps; S.delays = delays; S.starts = []; S.duration = 0;
+        delays.forEach(function (d) { S.starts.push(S.duration); S.duration += d; });
+        S.name = file.name; S.w = g.width; S.h = g.height;
+        empty.classList.add('hidden');
+        say(file.name.length > 26 ? file.name.slice(0, 24) + '...' : file.name,
+            g.frames.length + ' pictures, ' + g.width + ' x ' + g.height + ', ' + (S.duration / 1000).toFixed(1) + ' s. The compiler fits it to the strip.');
+        t0 = performance.now();
+        showAt(0);
+        start();
+      });
+    }).catch(function (e) { say('Could not use that file', e && e.message ? e.message : 'It may not be a GIF.'); });
+  }
+
+  // The compiler asks for picture number i at fps frames per second, with no waiting.
+  window.BE3600_captureGif = function (ctx, i, fps) {
+    if (!S.bitmaps.length) return Promise.reject(new Error('Choose a GIF first (GIF tab, "Choose GIF").'));
+    drawFit(ctx, S.bitmaps[indexAt(((i * 1000 / fps) * opts.speed) % S.duration)]);
+    return Promise.resolve();
+  };
+  window.BE3600_gifSuggestSeconds = function () {
+    return S.duration ? Math.max(1, Math.min(25, Math.round(S.duration / opts.speed / 1000))) : 5;
+  };
+  window.BE3600_gifDecoder = { parseGif: parseGif, gifCompose: gifCompose };
+
+  // Controls
+  Array.prototype.forEach.call(document.querySelectorAll('[data-gif-fit]'), function (b) {
+    b.addEventListener('click', function () {
+      opts.fit = b.getAttribute('data-gif-fit');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gif-fit]'), function (x) { x.classList.toggle('active', x === b); });
+      showAt((performance.now() - t0) * opts.speed);
+    });
+  });
+  $('gifSpeed').addEventListener('input', function (e) {
+    opts.speed = Number(e.target.value) / 100; $('gifSpeedOut').textContent = opts.speed.toFixed(2).replace(/0$/, '') + '×';
+  });
+  $('gifFocus').addEventListener('input', function (e) {
+    opts.focus = Number(e.target.value); $('gifFocusOut').textContent = opts.focus + '%'; showAt((performance.now() - t0) * opts.speed);
+  });
+  $('gifBg').addEventListener('input', function (e) { opts.bg = e.target.value; showAt((performance.now() - t0) * opts.speed); });
+  $('gifChoose').addEventListener('click', function () { picker.click(); });
+  empty.addEventListener('click', function () { picker.click(); });
+  empty.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); picker.click(); } });
+  picker.addEventListener('change', function () { load(picker.files[0]); picker.value = ''; });
+
+  // Drop a GIF on the preview.
+  function isGif(e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    return !!f && (f.type === 'image/gif' || /\.gif$/i.test(f.name));
+  }
+  function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
+  preview.addEventListener('dragover', function (e) { if (active && hasFiles(e)) { e.preventDefault(); preview.classList.add('dragging-gif'); } });
+  preview.addEventListener('dragleave', function () { preview.classList.remove('dragging-gif'); });
+  preview.addEventListener('drop', function (e) {
+    preview.classList.remove('dragging-gif');
+    if (!active || !hasFiles(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (isGif(e)) load(e.dataTransfer.files[0]); else say('That is not a GIF', 'Drop a .gif file here.');
+  });
+
+  // Switching tabs (the studio announces it).
+  document.addEventListener('be3600-engine', function (e) {
+    active = e.detail === 'gif';
+    host.classList.toggle('hidden', !active);
+    empty.classList.toggle('hidden', !active || S.bitmaps.length > 0);
+    if (active) { if (S.bitmaps.length) { t0 = performance.now(); showAt(0); } start(); }
+  });
+})();
 </script>
 </body>
 </html>

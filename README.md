@@ -18,66 +18,46 @@ Robot eyes, colour fields, your own text, or anything you design.
 
 ---
 
-## What is this?
-
-The GL-BE3600 has a small screen on the front. After a few idle seconds, this
-plays an animation on it. **Touch the screen and the normal GL.iNet screen comes
-straight back.** It is easy to turn off and easy to remove completely.
-
-* **One click to install** on Windows, macOS or Linux. No coding.
-* **Comes with an animation**, so it works right away.
-* **Make your own** in the [Motion Studio](#make-your-own-animation) in your browser.
-* **Safe:** it doesn't change the router's firmware. It adds a few small files, and one command removes them.
-
-## What you need
-
-* A **GL.iNet GL-BE3600 (Slate 7)**. It is only tested on this router. See [Good to know](#good-to-know).
-* A computer on the **same network** as the router (its Wi-Fi or a cable).
-* The router's **admin password** (the one you use on its web page).
+After a few idle seconds, this plays an animation on your BE3600's front
+screen. Tap it once to flip to your next saved animation; double-tap to bring
+the normal GL.iNet screen back. One click installs it, and one command removes
+it — nothing about the router's firmware changes.
 
 ## Install
+
+Needs: a GL-BE3600 (Slate 7), a computer on the same network as it, and its
+admin password.
 
 <div align="center">
 <img src="docs/assets/steps.svg" alt="1. Download and unzip. 2. Double-click Install. 3. Enter your router password." width="820">
 </div>
 
-**Windows**
+**Windows:** Click **Code → Download ZIP** above, unzip it, double-click
+**`Install.cmd`**, and type your router's admin password when it asks.
+*Nothing appears while you type — that's normal.*
 
-1. On this page click the green **Code** button, then **Download ZIP**. Unzip it.
-2. Double-click **`Install.cmd`**.
-3. When it asks, type your router's admin password and press Enter.
-   *Nothing appears while you type. That is normal.*
+**macOS / Linux:** `./install.sh`
 
-**macOS / Linux**
-
-```sh
-./install.sh
-```
-
-That's it. The animation starts after the screen has been idle for a few
-seconds, and it keeps working after the router restarts.
+That's it — the animation shows up after a few idle seconds and survives
+reboots.
 
 <details>
 <summary><b>Something went wrong, or you want to know what it does</b></summary>
 
-* **Windows says the script is blocked.** Right-click the ZIP, choose
-  *Properties*, tick *Unblock*, click OK, then unzip it again. Or click
-  *More info*, then *Run anyway*.
-* **It can't find the router.** It tries the address that worked last time, then
-  your computer's default gateway, then GL.iNet's factory address
-  (`192.168.8.1`). If your router uses a different address, it asks you once and
-  remembers it. You can also give it directly: `Install.cmd -Router 192.168.x.x`
-  or `./install.sh 192.168.x.x`.
-* **What is the password for?** It's the same as on the router's admin page. It
-  is typed into the computer's own secure-login prompt (`ssh`); these scripts
-  never see or store it.
-* **What does it change?** It copies a few small files onto the router and
-  starts a background service. The next section shows how to undo it.
+* **Windows says the script is blocked.** Right-click the ZIP → *Properties* →
+  tick *Unblock* → OK, then unzip again. Or click *More info, Run anyway*.
+* **It can't find the router.** It tries the last address that worked, then
+  your gateway, then `192.168.8.1`. Wrong router? It'll ask once and remember
+  the answer, or give it directly: `Install.cmd -Router 192.168.x.x`.
+* **The password** is your router's normal admin password, typed into `ssh`'s
+  own prompt — these scripts never see or store it.
+* **What it changes:** a few small files on the router, plus a background
+  service. See [below](#turn-it-off-or-remove-it) to undo that.
 
 More help: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 </details>
 
-## Make your own animation
+## Design one, and get it onto the router
 
 <div align="center">
 
@@ -87,48 +67,65 @@ More help: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
 </div>
 
-Motion Studio runs in your browser. There is nothing to install and nothing is
-uploaded.
+Motion Studio is a page in your browser: nothing to install, nothing uploaded.
+Pick **Atmosphere** (six slow colour scenes), **Robot Eyes** (a library of expressions) or **GIF** (bring your own; the compiler crops or fits it to the strip), shape it, then open **Compiler and optimizer** (**Create your
+video**) and click **Compile BE3600 Pack**. It asks how long the loop should
+be (1-25 s).
 
-* **Atmosphere:** six slow, full-screen colour scenes (Silk, Tide, Orbit, Halo, Mesh, Cells).
-* **Robot Eyes:** a library of animated eyes with 24 expressions.
-* **Optimizer:** picks the device speed and turns your animation into a file.
+To send it to your router without leaving the page, start **Studio Link** once:
 
-When you like it, open **Optimizer** and click **Compile BE3600 Pack**. It asks
-how long the loop should be (1 to 25 seconds), then downloads a small file called
-`be3600-active.bea`. Then put it on the router:
+1. **Double-click `Studio-Link.cmd`** (macOS/Linux: `./studio-link.sh`) and
+   leave its window open. It runs only on your computer.
+2. In Motion Studio, **drop your `.bea` on the square with the plus** (or click
+   the square to choose a file, or press **Send what I just compiled**).
+3. **Type your router's admin password in the Studio Link window** when it
+   asks. The file is checked, sent, and playing.
 
-* **Windows:** drag the file onto **`Set-Animation.cmd`**. (Or double-click
-  `Set-Animation.cmd` and drag the file into the window that opens.)
-* **macOS / Linux:** run `./set-animation.sh`, then drag the file into the window.
+The square tells you whether Studio Link is running. If it isn't, or your
+browser blocks it, the old way still works: save the file and drag it onto
+**`Set-Animation.cmd`** (or run `./set-animation.sh`).
 
-The tool checks the file first and tells you in plain words if something is
-wrong, then sends it to the router. You can drop several files in a row.
+Drop as many files as you like. Each one is checked first, so a bad file gets a
+plain-English reason instead of breaking anything.
 
-**The router keeps up to 3 animations**, so you can switch back to one later,
-and the one you replace is saved automatically. **Each may loop for at most 25
-seconds**, which keeps everything small and safe. To switch or tidy up, use the
-commands in the terminal (`be3600-anim list`, `use NAME`, `remove NAME`; see
-[all commands](#turn-it-off-or-remove-it)). A file named `sunset.bea` is saved
-as `sunset`.
+**The router keeps up to 3**, so you can switch back later (replacing one saves
+it automatically), and **each loops for at most 25 s**. A file named
+`sunset.bea` is kept as `sunset`, so give each animation its own name; the same
+name replaces the old one. Manage them from a terminal: `be3600-anim list` /
+`use NAME` / `remove NAME` (see [all commands](#turn-it-off-or-remove-it)).
 
+<details>
+<summary><b>What is Studio Link, and is it safe?</b></summary>
+
+A web page can't log in to your router by itself, so Studio Link is a tiny
+helper that does it for the page, using the same check-then-SSH steps as
+`Set-Animation`.
+
+* It listens on **this computer only** (`127.0.0.1`); nothing else on your
+  network can reach it.
+* It only accepts pages from Motion Studio's own site, a local copy of it, or
+  `localhost`. (Running a fork on another address? Set `STUDIO_LINK_ORIGINS`.)
+* It only ever accepts a valid `.bea` animation (checked here and again on the
+  router), and only while you have it running.
+* **Your router password is typed into the Studio Link window**, never into
+  the web page.
+* Your browser may ask to allow "devices on your local network". Choose Allow.
+  Some browsers may block it entirely; then use `Set-Animation` as above.
+</details>
 <details>
 <summary><b>Smaller files, and making animations without the Studio</b></summary>
 
-An animation is a `.bea` file. There are two kinds: `BEA1` stores every frame
-in full, and `BEA2` stores only what changes, usually **10x or more smaller**.
-**The Studio already saves the small kind (`BEA2`)**, so its files need no
-conversion. If you have an older full-size file (`BEA1`), `tools/bea2.py`
-shrinks it, and converts back again, without losing anything:
+Motion Studio already saves the compact `BEA2` format (only what changes
+between frames — usually 10x smaller than storing every frame in full,
+`BEA1`). Got an old `BEA1` file? `tools/bea2.py` converts either way, losslessly:
 
 ```sh
 python3 tools/bea2.py encode old-file.bea smaller.bea
 ```
 
-To see a file as a GIF: `python3 tools/make-preview-gif.py file.bea preview.gif`
-(needs `pip install pillow`). The format is described in
-[`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md), and `tools/make-sample-bea.py` makes
-a colour test and a scrolling rainbow you can try.
+`tools/make-preview-gif.py file.bea preview.gif` renders a GIF (`pip install
+pillow`). Format details: [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md).
+`tools/make-sample-bea.py` makes a couple of test patterns.
 </details>
 
 ## Turn it off, or remove it
@@ -138,81 +135,77 @@ On the router, in a terminal (see [how to open one](docs/TROUBLESHOOTING.md#how-
 ```sh
 be3600-anim off            # switch it off; everything stays installed
 be3600-anim on             # switch it back on
-be3600-uninstall           # remove it completely (keeps your animation)
-be3600-uninstall --purge   # remove everything, including your animation
+be3600-uninstall           # remove it completely (keeps your animations)
+be3600-uninstall --purge   # remove everything
 ```
 
-Either way, the normal GL.iNet screen is put back exactly as it was.
+Either way, the normal GL.iNet screen comes back exactly as it was.
 
 <details>
-<summary><b>All commands</b></summary>
+<summary><b>All commands and settings</b></summary>
 
 | Command | What it does |
 |---------|--------------|
-| `be3600-anim on` | Turn it on now and after every restart. |
-| `be3600-anim off` | Turn it off and restore the normal screen. |
-| `be3600-anim status` | Is it on, who is drawing on the screen, and which animation. |
-| `be3600-anim set FILE.bea [NAME]` | Check `FILE.bea`, keep it in the library and play it. |
-| `be3600-anim list` | Show the saved animations (`*` marks the one playing). |
-| `be3600-anim use NAME` | Switch to a saved animation. |
-| `be3600-anim remove NAME` | Delete a saved animation (you can keep at most 3). |
-| `be3600-anim preview [FILE.bea] [SECONDS]` | Play an animation for a few seconds (default 10) without installing it, then restore everything. Touch to stop early. |
-| `be3600-anim check` | Check the current animation and show how long it is. |
-| `be3600-anim doctor` | Full health check. Run this first if something seems wrong. |
+| `be3600-anim on` / `off` | Enable / disable, and restore the normal screen. |
+| `be3600-anim status` | Is it on, who owns the screen, which animation. |
+| `be3600-anim set FILE.bea [NAME]` | Check, save to the library, and play it. |
+| `be3600-anim list` / `use NAME` / `remove NAME` | Manage the saved animations. |
+| `be3600-anim preview [FILE.bea] [SECONDS]` | Try one without installing it. |
+| `be3600-anim check` | Validate the active animation, show its length. |
+| `be3600-anim doctor` | Full health check — run this first if anything's off. |
 
-**Settings** are in `/etc/be3600-screen/config`. Run `be3600-anim on` after editing.
+Settings live in `/etc/be3600-screen/config` (`be3600-anim on` to apply):
 
 ```sh
-IDLE_SECONDS=10      # seconds without a touch before the animation starts (0 = at once)
-TOUCH_DEVICE=""      # leave empty: the touchscreen is found automatically
-PLAYER_ENGINE="auto" # "auto" uses the fast native player; "lua" forces the fallback
+IDLE_SECONDS=10                 # seconds idle before the animation starts (0 = at once)
+DOUBLE_TAP_WINDOW_SECONDS=0.4   # a second tap this close is a double-tap; else it switches animation
+SWITCH_FADE_MS=250              # crossfade time when switching (native player only)
+TOUCH_DEVICE=""                 # leave empty: found automatically
+PLAYER_ENGINE="auto"            # "auto" = fast native player when installed; "lua" forces the fallback
 ```
 </details>
 
 ## Good to know
 
-* **Only tested on a GL-BE3600** with firmware 4.8.3. The installer refuses to
-  install on a device that doesn't have this display, and the screen saver
-  refuses to draw on one with a different layout.
-* **While the animation is showing, the normal screen is paused.** Touching the
-  screen brings it back, and the animation returns when the screen is idle again.
-* **Firmware updates:** the project's files are on the list OpenWrt keeps across
-  a "keep settings" upgrade, but this hasn't been tried on a real upgrade. After
-  an upgrade, the screen saver checks the display and touchscreen before taking
-  over, and leaves the normal screen alone if anything looks different. If it is
-  ever missing, just run the installer again.
-* **Fast full-screen motion may tear a little.** This display can't do the tricks
-  that prevent it ([why](docs/TEARING.md)), so gentle motion looks best.
-* The Windows installer was tested on Windows 11. The macOS/Linux one was tested
-  in a Linux container, **not on a real Mac**.
+* **Only tested on a GL-BE3600**, firmware 4.8.3. The installer and the
+  screensaver both refuse to touch a display that doesn't match.
+* **A tap waits ~0.4 s** to see if a second one follows — that's the
+  double-tap window, not lag.
+* **Firmware upgrades:** untested for real, but the files are on OpenWrt's
+  "keep settings" list, and the screensaver re-checks the display after any
+  version change before taking it over. Missing something? Rerun the installer.
+* **Fast full-screen motion may tear a little** — this display has no way to
+  avoid it ([why](docs/TEARING.md)); gentle motion looks best.
+* Windows was tested on Windows 11; macOS/Linux only in a Linux container,
+  **not on a real Mac**.
 
 ## For the curious
 
 | | |
 |---|---|
-| [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md) | What runs on the router and why, including a touchscreen bug worth knowing about |
-| [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md) | The animation file format (`BEA1` and `BEA2`) |
-| [`docs/TEARING.md`](docs/TEARING.md) | What was measured about tear-free drawing on this display |
+| [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md) | What runs on the router and why |
+| [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md) | The animation file format (`BEA1`, `BEA2`) |
+| [`docs/TEARING.md`](docs/TEARING.md) | What was measured about tear-free drawing |
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Fixes for common problems |
 
 ```
-Install.cmd        Windows: double-click to install
-Set-Animation.cmd  Windows: drag a .bea onto it to change the animation
-install.sh         macOS/Linux installer
-set-animation.sh   macOS/Linux drag-and-drop tool
-animations/        the bundled animation
-studio/            Motion Studio (the browser tool)
-router/            files that end up on the router (same paths as on the device)
-setup/             scripts that run on the router during install and uninstall
-native/            source of the fast player, its build script, a display probe
-tools/             the Windows scripts, and helpers for making and converting animations
-tests/             the test suite (run it with: sh tests/run.sh)
-docs/              the guides above
+Install.cmd / install.sh          one-click installer
+Set-Animation.cmd / set-animation.sh   drag-and-drop animation swap
+Studio-Link.cmd / studio-link.sh       lets Motion Studio send animations to the router
+studio/                            Motion Studio (the browser tool)
+animations/                        the bundled animation
+router/                            files that end up on the router
+setup/                             install / uninstall scripts that run there
+native/                            source of the fast player + build script
+tools/                             Windows scripts, and animation helpers
+tests/                             the test suite (sh tests/run.sh)
+docs/                              the guides above
 ```
 
 ## License
 
 MIT, see [LICENSE](LICENSE), including the bundled animation. Motion Studio
-uses Three.js and Vanta.js (both MIT); see [`studio/OPEN_SOURCE.md`](studio/OPEN_SOURCE.md).
-Not affiliated with or endorsed by GL Technologies. Use at your own risk: this
-takes over the router's front display while the animation plays.
+uses Three.js and Vanta.js (both MIT) — see
+[`studio/OPEN_SOURCE.md`](studio/OPEN_SOURCE.md). Not affiliated with or
+endorsed by GL Technologies. Use at your own risk: this takes over the
+router's front display while the animation plays.

@@ -5,10 +5,10 @@
 The router's front screen is normally drawn by GL.iNet's own program. This
 project adds a small helper that watches the touchscreen. When nobody has
 touched it for a few seconds, the helper stops GL.iNet's program and plays your
-animation on the screen instead. When someone touches the screen, it stops the
-animation and starts GL.iNet's program again, so the normal screen is back
-instantly. It never lets the two draw at the same time, because that would
-scramble the picture.
+animation on the screen instead. A single tap steps to your next saved
+animation; a quick double-tap stops the animation and starts GL.iNet's program
+again, so the normal screen is back instantly. It never lets the two draw at the
+same time, because that would scramble the picture.
 
 The rest of this page is for people who want the details.
 
@@ -25,13 +25,14 @@ guarantees **exactly one owner at a time**:
         |  (normal GL.iNet UI)     |
         +--------------------------+
              |                 ^
-   IDLE_SECONDS with      a finger touches
-   no touch               the screen
+   IDLE_SECONDS with        a double-tap
+   no touch                 on the screen
              v                 |
-        +--------------------------+
-        |  CUSTOM                  |   gl_screen stopped, be3600-player
-        |  (your animation)        |   writing frames to /dev/fb0
-        +--------------------------+
+        +--------------------------+ <--+
+        |  CUSTOM                  |    | a single tap: next saved
+        |  (your animation)        |    | animation, stay in CUSTOM
+        +--------------------------+ ---+
+        gl_screen stopped, be3600-player writing frames to /dev/fb0
 ```
 
 Every hand-over kills the outgoing owner and waits for it to be gone *before*
@@ -59,7 +60,8 @@ The touch controller is a Hynitron CST816X exposed as `/dev/input/event0`.
 When a finger lands it emits `ABS_X`/`ABS_Y` and `ABS_MT_TRACKING_ID = 0`, and
 `ABS_MT_TRACKING_ID = -1` when it lifts. It does not send `BTN_TOUCH`.
 `be3600-wait-touch.lua` reads 24-byte `struct input_event` records and exits 0
-on the first finger-down.
+on the first finger-down. It reports only "a finger landed"; telling a single
+tap from a double-tap is done by the supervisor (below), which only needs that.
 
 ### The buffering pitfall
 
@@ -86,9 +88,21 @@ Treat the mechanism as a hypothesis; the fix is what was verified.
   under `timeout IDLE_SECONDS`. Exit 0 means a touch (timer restarts); a timeout
   exit means idle.
 * **While the animation runs**, the supervisor watches two processes: the touch
-  helper and the player. A touch ends the animation. If the player dies it is
-  restarted, up to three times, and then the supervisor gives up and returns to
-  the stock screen rather than leave a blank display.
+  helper and the player. When the helper reports a touch, the supervisor starts
+  a second helper under `timeout DOUBLE_TAP_WINDOW_SECONDS`: if that reports
+  another touch, it is a **double-tap** and the supervisor returns to the stock
+  screen; if it times out, it was a lone tap, so the supervisor steps to the
+  next file in the library (`/etc/be3600-screen/animations/`, alphabetical,
+  wrapping around), copies it to `active.bea`, and restarts the player without
+  ever leaving the animation. With fewer than two saved animations a lone tap
+  changes nothing. If the player dies it is restarted, up to three times, and
+  then the supervisor gives up and returns to the stock screen rather than
+  leave a blank display.
+* **Why taps, not swipes:** the panel is only 76 pixels wide, and the touch
+  controller's coordinate range hasn't been calibrated here, so telling a swipe
+  from a tap would depend on guessed distances. Timing two touches needs only the
+  "did a finger land" signal that already works, and is easy to do on a strip
+  this small.
 * A process is checked for being alive by reading `/proc/PID/status`, not just
   `kill -0`, because `kill -0` succeeds on a crashed background job that has
   not been reaped yet (a zombie), which would hide a dead player.

@@ -7,6 +7,17 @@ ANIMATION="/etc/be3600-screen/active.bea"
 # Seconds without a touch before the animation starts (0 = immediately).
 IDLE_SECONDS=10
 
+# While an animation is showing: a single tap switches to the next saved
+# animation (see be3600-anim list). A second tap within this many seconds of
+# the first is a double-tap, and that is what leaves the animation and shows
+# the normal screen again. Fractions are fine. A shorter window makes a single
+# tap switch sooner but leaves less time for the second tap of a double-tap.
+DOUBLE_TAP_WINDOW_SECONDS=0.4
+
+# How long (milliseconds) a tap-triggered switch crossfades from the old
+# animation into the new one; 0 cuts instantly. Native player only.
+SWITCH_FADE_MS=250
+
 # Touchscreen device. Leave empty to find it automatically (the input device
 # whose name contains "touch"); set it only if autodetection picks the wrong one,
 # e.g. TOUCH_DEVICE="/dev/input/event1".
