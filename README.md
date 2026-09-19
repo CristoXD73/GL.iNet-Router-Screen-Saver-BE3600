@@ -91,8 +91,9 @@ makes a red/green/blue/white colour test and a scrolling rainbow.
 
 ## Motion Studio: make animations in your browser
 
-Open [`studio/index.html`](studio/index.html) in any browser (no install, nothing
-is uploaded). Pick a scene (Robot Eyes, Atmosphere, Rainbow, Text), adjust it
+**[Open Motion Studio](https://cristoxd73.github.io/glinet-router-screensaver-be3600/studio/)**
+(or open [`studio/index.html`](studio/index.html) from a download). It runs in
+any browser, with no install, and nothing is uploaded. Pick a scene (Robot Eyes, Atmosphere, Rainbow, Text), adjust it
 with live preview, and click **Save .bea**. It can also open an existing `.bea`
 to preview it. Then drop the saved file on `Set-Animation.cmd` as above.
 
