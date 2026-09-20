@@ -11,7 +11,8 @@
  * first frame over about MS milliseconds (1..5000), instead of cutting to it
  * instantly. Used when switching between saved animations.
  *
- * Test hooks (unused in normal operation), same as the Lua player:
+ * Test hooks (unused in normal operation; they work only when BE3600_TESTING is set),
+ * same as the Lua player:
  *   BE3600_FB     framebuffer path (point it at an ordinary file to test on a PC)
  *   BE3600_LOOPS  exit after this many complete passes instead of looping forever
  *
@@ -262,8 +263,11 @@ int main(int argc, char **argv)
     const char *path = "/etc/be3600-screen/active.bea";
     unsigned fade_ms = 0;
     int ai;
-    const char *fbpath = getenv("BE3600_FB");
-    const char *loops_env = getenv("BE3600_LOOPS");
+    /* The two test hooks work only when BE3600_TESTING is set, so nothing in a normal
+     * environment can point the player at another file or stop it early. */
+    const int testing = getenv("BE3600_TESTING") != NULL;
+    const char *fbpath = testing ? getenv("BE3600_FB") : NULL;
+    const char *loops_env = testing ? getenv("BE3600_LOOPS") : NULL;
     long max_loops = loops_env && *loops_env ? atol(loops_env) : 0;
     long loops = 0;
     size_t size = 0;

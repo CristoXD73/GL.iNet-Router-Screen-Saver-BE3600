@@ -18,9 +18,12 @@
 # (press Enter to agree), and offers to remember this computer so you never type the
 # password again. It then opens Motion Studio in your browser.
 #
-# Only pages served from the Motion Studio site, a local file, or localhost are
-# accepted. To allow another site (for example your own fork's GitHub Pages address),
-# set STUDIO_LINK_ORIGINS to a comma-separated list before starting it.
+# Who may use it: only a page served from the Motion Studio site (or localhost) AND that
+# holds this run's secret token. The token is made fresh each time Studio Link starts and
+# is handed to the page in the address Studio Link opens, so other websites, other
+# programs and other users on this computer cannot drive it. To allow another site (for
+# example your own fork's GitHub Pages address), set STUDIO_LINK_ORIGINS to a
+# comma-separated list before starting it.
 
 param(
     [int]$Port = 8791,
@@ -35,21 +38,39 @@ param(
 
 $Script:MaxBody = 32MB
 $Script:Latin1 = [System.Text.Encoding]::GetEncoding(28591)
-$Script:AllowedOrigins = @('https://cristoxd73.github.io', 'null')
+# Test hooks (a stand-in ssh, answering "yes" for you) only work when BE3600_TESTING is
+# set, so nothing in a normal environment can switch them on by accident.
+$Script:Testing = [bool]$env:BE3600_TESTING
+
+# "null" (a sandboxed page or a local file) is NOT accepted by default: any website can
+# produce that origin. Add it yourself in STUDIO_LINK_ORIGINS if you open a local copy.
+$Script:AllowedOrigins = @('https://cristoxd73.github.io')
 if ($env:STUDIO_LINK_ORIGINS) {
-    $Script:AllowedOrigins += @($env:STUDIO_LINK_ORIGINS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $Script:AllowedOrigins += @($env:STUDIO_LINK_ORIGINS -split ',' | ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -match '^(null|https?://[A-Za-z0-9.-]+(:\d+)?)$' })
 }
 $Script:RouterIp = $null
 $Script:Sent = 0
 $Script:Password = $null
+$Script:KeyPass = $null                       # the remembered key's passphrase (memory only)
 $Script:AskPassDir = $null
 $Script:AskPassPath = $null
-$Script:Pinged = $false                       # has the Motion Studio page found us yet?
+$Script:Token = $null                         # this run's secret; the page must present it
+$Script:Paired = $false                       # has a page proved it holds the token yet?
 $Script:KeyPath = Join-Path $Script:StateDir 'studio-key'     # the "remember this computer" key
+$Script:PassPath = $Script:KeyPath + '.pass'                  # its passphrase, locked to this Windows account (DPAPI)
 $Script:KeyComment = 'be3600-studio-link-' + (($env:COMPUTERNAME -replace '[^A-Za-z0-9_-]', '-'))
 $Script:AuthKeys = '/etc/dropbear/authorized_keys'
-$Script:StudioUrl = 'https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/'
-if ($env:STUDIO_LINK_URL) { $Script:StudioUrl = $env:STUDIO_LINK_URL }
+$Script:DefaultStudioUrl = 'https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/'
+$Script:StudioUrl = $Script:DefaultStudioUrl
+# Only an https address (or localhost) may be opened; never file:, javascript: or anything odd.
+if ($env:STUDIO_LINK_URL -and $env:STUDIO_LINK_URL -match '^(https://[A-Za-z0-9.-]+(:\d+)?/[^\s#]*|http://(localhost|127\.0\.0\.1)(:\d+)?/[^\s#]*)$') {
+    $Script:StudioUrl = $env:STUDIO_LINK_URL
+}
+if ($Router -and -not (Test-HostName $Router)) {
+    Write-Host '  The router address must be like 192.168.8.1 (letters, digits, dots and dashes only).'
+    exit 1
+}
 
 
 # ----------------------------------------------------------------------------
@@ -67,6 +88,22 @@ function Test-OriginAllowed {
 function Test-HostAllowed {
     param([string]$HostHeader)
     return ($HostHeader -match '^(localhost|127\.0\.0\.1)(:\d+)?$')
+}
+
+# Compares in constant time, so the token cannot be guessed a character at a time.
+function Test-Token {
+    param([string]$Given)
+    if (-not $Script:Token -or -not $Given -or $Given.Length -ne $Script:Token.Length) { return $false }
+    $diff = 0
+    for ($i = 0; $i -lt $Given.Length; $i++) { $diff = $diff -bor ([int][char]$Given[$i] -bxor [int][char]$Script:Token[$i]) }
+    return ($diff -eq 0)
+}
+
+function New-Token {
+    $b = New-Object byte[] 24
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($b) } finally { $rng.Dispose() }
+    return ([Convert]::ToBase64String($b)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
 
@@ -141,7 +178,11 @@ function Read-HttpBody {
     if ($have -gt $len) { $have = $len }
     if ($have -gt 0) { [Array]::Copy($Req.Prefix, $Req.Start, $body, 0, $have) }
 
+    # A whole animation arrives in well under a second on this computer; a client that
+    # dribbles it in for a minute is not given the (single) listener for longer.
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
     while ($have -lt $len) {
+        if ($clock.Elapsed.TotalSeconds -gt 60) { throw 'The upload was too slow.' }
         $n = $Stream.Read($body, $have, [Math]::Min(65536, $len - $have))
         if ($n -le 0) { throw 'The connection closed before the whole file arrived.' }
         $have += $n
@@ -163,7 +204,7 @@ function Send-Response {
         $h += "Access-Control-Allow-Origin: $Origin`r`n"
         $h += "Vary: Origin`r`n"
         $h += "Access-Control-Allow-Methods: GET, POST, OPTIONS`r`n"
-        $h += "Access-Control-Allow-Headers: Content-Type`r`n"
+        $h += "Access-Control-Allow-Headers: Content-Type, X-Studio-Token`r`n"
         # Browsers ask permission before a public web page talks to your own computer.
         $h += "Access-Control-Allow-Private-Network: true`r`n"
         $h += "Access-Control-Max-Age: 600`r`n"
@@ -191,38 +232,61 @@ function New-AskPass {
     $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('be3600-studio-' + [guid]::NewGuid().ToString('N'))
     [void][System.IO.Directory]::CreateDirectory($dir)
     $path = Join-Path $dir 'askpass.cmd'
-    # Prints the password held in the environment. The password itself is never written to this file.
+    # Prints the secret held in the environment. The secret itself is never written to this file.
     $body = "@echo off`r`npowershell.exe -NoProfile -NonInteractive -Command `"[Console]::Out.Write(`$env:BE3600_STUDIO_PW)`"`r`n"
     [System.IO.File]::WriteAllText($path, $body, [System.Text.Encoding]::ASCII)
     $Script:AskPassDir = $dir
     $Script:AskPassPath = $path
 }
 
-function Set-PasswordEnv {
-    param([string]$Pw)
-    [Environment]::SetEnvironmentVariable('BE3600_STUDIO_PW', $Pw, 'Process')
+# A secret (the password, or the remembered key's passphrase) is placed in the environment
+# only for the length of one ssh call and removed straight after, so nothing else this
+# program starts (the browser, for one) can ever inherit it.
+function Set-SecretEnv {
+    param([string]$Secret)
+    if (-not $Script:AskPassPath) { New-AskPass }
+    [Environment]::SetEnvironmentVariable('BE3600_STUDIO_PW', $Secret, 'Process')
     [Environment]::SetEnvironmentVariable('SSH_ASKPASS', $Script:AskPassPath, 'Process')
     [Environment]::SetEnvironmentVariable('SSH_ASKPASS_REQUIRE', 'force', 'Process')
     if (-not $env:DISPLAY) { [Environment]::SetEnvironmentVariable('DISPLAY', 'studio-link', 'Process') }
 }
 
-function Clear-PasswordEnv {
+function Clear-SecretEnv {
     foreach ($n in 'BE3600_STUDIO_PW', 'SSH_ASKPASS', 'SSH_ASKPASS_REQUIRE') { [Environment]::SetEnvironmentVariable($n, $null, 'Process') }
+}
+
+function Clear-PasswordEnv {
+    Clear-SecretEnv
     try { if ($Script:AskPassDir) { [System.IO.Directory]::Delete($Script:AskPassDir, $true) } } catch {}
+    $Script:AskPassDir = $null
+    $Script:AskPassPath = $null
 }
 
 # One command on the router. -> @{ Code; Out }
 function Invoke-Ssh {
     param([string]$Ip, [string]$Remote, [string]$InputFile)
 
-    $ssh = $env:BE3600_SSH                      # test hook: a stand-in for ssh
+    # Everything below goes into one cmd.exe command line, so it must be plain.
+    if (-not (Test-HostName $Ip)) { throw 'The router address must be like 192.168.8.1 (letters, digits, dots and dashes only).' }
+    if ($Key -and $Key -match '["&|<>^%]') { throw 'The key file path may not contain any of  " & | < > ^ %' }
+
+    $ssh = $null
+    if ($Script:Testing) { $ssh = $env:BE3600_SSH }              # test hook: a stand-in for ssh
     if (-not $ssh) { $ssh = Get-Exe 'ssh.exe' }
     if (-not $ssh) { throw 'ssh.exe was not found. Turn on "OpenSSH Client" under Settings > Apps > Optional features.' }
 
     $quiet = Test-QuietLogin
     $opt = ''
-    if ($Key) { $opt = "-i `"$Key`" -o BatchMode=yes " }
-    elseif ($null -ne $Script:Password) { $opt = '-o NumberOfPasswordPrompts=1 ' }
+    $secret = $null
+    if ($Key -and ($null -ne $Script:KeyPass)) {
+        $opt = "-i `"$Key`" -o IdentitiesOnly=yes -o NumberOfPasswordPrompts=1 "      # ssh asks for the key's passphrase
+        $secret = $Script:KeyPass
+    }
+    elseif ($Key) { $opt = "-i `"$Key`" -o IdentitiesOnly=yes -o BatchMode=yes " }
+    elseif ($null -ne $Script:Password) {
+        $opt = '-o NumberOfPasswordPrompts=1 '
+        $secret = $Script:Password
+    }
 
     $cmd = "`"$ssh`" $opt-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 root@$Ip `"$Remote`""
     if ($InputFile) { $cmd += " < `"$InputFile`"" } elseif ($quiet) { $cmd += ' < nul' }
@@ -234,12 +298,14 @@ function Invoke-Ssh {
     }
 
     try {
+        if ($null -ne $secret) { Set-SecretEnv $secret }
         $p = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /s /c `"$cmd`"" -NoNewWindow -Wait -PassThru
         $text = ''
         if ($outFile) { $text = [System.IO.File]::ReadAllText($outFile) }
         return @{ Code = $p.ExitCode; Out = $text }
     }
     finally {
+        if ($null -ne $secret) { Clear-SecretEnv }
         if ($outFile) { try { [System.IO.File]::Delete($outFile) } catch {} }
     }
 }
@@ -390,7 +456,8 @@ function Invoke-Send {
             try { [Console]::Beep(880, 120) } catch {}
         }
 
-        $remote = "cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea $name && rm -f /tmp/be3600-new.bea"
+        # A fresh private temp name on the router each time (never a fixed, guessable path).
+        $remote = 'T=$(mktemp /tmp/be3600-new.XXXXXX) && cat > $T && be3600-anim set $T {0}; R=$?; rm -f $T; exit $R' -f $name
         $r = Invoke-Ssh -Ip $ip -Remote $remote -InputFile $tmp
         Write-Host ''
 
@@ -411,7 +478,7 @@ function Invoke-Send {
         $m = 'The router did not accept that file. The usual reason: it already holds 3 animations. Give the file a name you already use to replace one, or remove one below.'
         if ($why) { Write-Bad $why }
         Write-Box @('The router did not accept that file.') 'Red'
-        return New-Reply 422 'Unprocessable Entity' @{ ok = $false; message = $m; detail = $r.Out.Trim() }
+        return New-Reply 422 'Unprocessable Entity' @{ ok = $false; message = $m }
     }
     finally {
         try { [System.IO.File]::Delete($tmp) } catch {}
@@ -426,8 +493,8 @@ function Invoke-Send {
 function Handle-Client {
     param([System.Net.Sockets.TcpClient]$Client)
 
-    $Client.ReceiveTimeout = 30000
-    $Client.SendTimeout = 30000
+    $Client.ReceiveTimeout = 15000
+    $Client.SendTimeout = 15000
     $stream = $Client.GetStream()
     $origin = $null
 
@@ -452,11 +519,25 @@ function Handle-Client {
             return
         }
 
+        $hasToken = Test-Token $req.Headers['x-studio-token']
+
+        # Without the token the ping only says "I am Studio Link, and I need pairing": no
+        # router address, nothing else. With it, the page gets the full picture.
         if ($req.Method -eq 'GET' -and $req.Path -eq '/ping') {
-            $Script:Pinged = $true
+            if (-not $hasToken) {
+                Send-Response $stream 200 'OK' $cors @{ ok = $true; app = 'be3600-studio-link'; version = 3; needToken = $true }
+                return
+            }
+            $Script:Paired = $true
             $known = $Router
             if (-not $known) { $known = $Script:RouterIp }
-            Send-Response $stream 200 'OK' $cors @{ ok = $true; app = 'be3600-studio-link'; version = 2; dryRun = [bool]$DryRun; sent = $Script:Sent; router = $known; loggedIn = (Test-QuietLogin) }
+            Send-Response $stream 200 'OK' $cors @{ ok = $true; app = 'be3600-studio-link'; version = 3; authed = $true; dryRun = [bool]$DryRun; sent = $Script:Sent; router = $known; loggedIn = (Test-QuietLogin) }
+            return
+        }
+
+        # Everything else needs this run's secret token.
+        if (-not $hasToken) {
+            Send-Response $stream 401 'Unauthorized' $cors @{ ok = $false; needToken = $true; message = 'This page has not been paired with Studio Link yet.' }
             return
         }
 
@@ -499,7 +580,8 @@ function Handle-Client {
         if ($_.Exception.Message -notmatch 'transport connection|forcibly closed|connection was aborted|Unable to read data') {
             Write-Warn ("Request problem: " + $_.Exception.Message)
         }
-        try { Send-Response $stream 400 'Bad Request' $origin @{ ok = $false; message = $_.Exception.Message } } catch {}
+        # The page gets a plain message; the details stay in this window (never an internal error text).
+        try { Send-Response $stream 400 'Bad Request' $origin @{ ok = $false; message = 'Studio Link could not handle that request.' } } catch {}
     }
     finally {
         try { $stream.Close() } catch {}
@@ -519,6 +601,88 @@ function Test-Login {
     return ($r.Code -eq 0 -and $r.Out -match 'studio-ok')
 }
 
+# ----------------------------------------------------------------------------
+# The remembered key is locked with a passphrase, and that passphrase is locked to
+# this Windows account (DPAPI). Copying the key file to another computer or another
+# account gets an attacker nothing.
+# ----------------------------------------------------------------------------
+
+function Protect-Text {
+    param([string]$Plain)
+    $ss = ConvertTo-SecureString -String $Plain -AsPlainText -Force
+    return (ConvertFrom-SecureString -SecureString $ss)
+}
+
+function Unprotect-Text {
+    param([string]$Blob)
+    $ss = ConvertTo-SecureString -String $Blob
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($ss)
+    try { return [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }
+    finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+}
+
+function Get-SavedKeyPass {
+    if (-not (Test-Path -LiteralPath $Script:PassPath)) { return $null }
+    try {
+        $blob = Get-Content -LiteralPath $Script:PassPath -TotalCount 1
+        if ($blob) { return (Unprotect-Text $blob) }
+    } catch {}
+    return $null
+}
+
+function Save-KeyPass {
+    param([string]$Phrase)
+    [void][System.IO.Directory]::CreateDirectory($Script:StateDir)
+    [System.IO.File]::WriteAllText($Script:PassPath, (Protect-Text $Phrase))
+    Lock-ToUser $Script:PassPath
+}
+
+# Only this Windows account may read or change the file.
+function Lock-ToUser {
+    param([string]$Path)
+    try {
+        $me = ('{0}\{1}' -f $env:USERDOMAIN, $env:USERNAME)
+        & icacls.exe $Path /inheritance:r /grant:r ('{0}:(F)' -f $me) | Out-Null
+    } catch {}
+}
+
+function New-Phrase {
+    $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+    $b = New-Object byte[] 40
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($b) } finally { $rng.Dispose() }
+    $s = New-Object System.Text.StringBuilder
+    foreach ($x in $b) { [void]$s.Append($chars[$x % $chars.Length]) }
+    return $s.ToString()
+}
+
+function Remove-KeyFiles {
+    foreach ($p in $Script:KeyPath, ($Script:KeyPath + '.pub'), $Script:PassPath) { try { [System.IO.File]::Delete($p) } catch {} }
+}
+
+# A key remembered by an earlier version has no passphrase: lock it now, in place.
+function Protect-OldKey {
+    param([string]$Ip)
+    $rekeyed = $false
+    try {
+        $keygen = Get-Exe 'ssh-keygen.exe'
+        if (-not $keygen) { return }
+        $phrase = New-Phrase
+        Save-KeyPass $phrase                                   # stored first, so it can never be lost
+        $p = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /s /c `"`"$keygen`" -q -p -f `"$($Script:KeyPath)`" -P `"`" -N $phrase`"" -NoNewWindow -Wait -PassThru
+        if ($p.ExitCode -ne 0) { throw 'ssh-keygen could not lock the key' }
+        $rekeyed = $true
+        $script:KeyPass = $phrase
+        if (-not (Test-Login $Ip)) { throw 'the locked key did not work' }
+        Write-Ok 'Your remembered key is now locked with a passphrase that only this Windows account can open.'
+    }
+    catch {
+        $script:KeyPass = $null
+        if (-not $rekeyed) { try { [System.IO.File]::Delete($Script:PassPath) } catch {} }
+        Write-Warn ("Could not lock the remembered key ($($_.Exception.Message)); it keeps working as before.")
+    }
+}
+
 # Get in: the remembered key if there is one, otherwise the password, asked for once
 # (it stays in memory). -> the router's address, or $null.
 function Start-Login {
@@ -533,14 +697,27 @@ function Start-Login {
 
     if (Test-Path -LiteralPath $Script:KeyPath) {
         $script:Key = $Script:KeyPath
-        if (Test-Login $ip) { Write-Ok 'Logged in (this computer is remembered).'; return $ip }
+        $script:KeyPass = Get-SavedKeyPass                     # $null: a key from an earlier version (no passphrase)
+        if (Test-Login $ip) {
+            Write-Ok 'Logged in (this computer is remembered).'
+            if ($null -eq $Script:KeyPass) { Protect-OldKey $ip }
+            return $ip
+        }
         $script:Key = $null
+        $script:KeyPass = $null
         Write-Warn 'The remembered login no longer works (was the router reset?). Please type the password.'
     }
 
     if ([Console]::IsInputRedirected) { return $ip }
 
-    New-AskPass
+    if (Test-UnusualAddress $ip) {
+        Write-Warn "$ip is not an address on a home or office network. Your password would travel to it."
+        $go = ($Script:Testing -and $env:BE3600_ASSUME_YES)
+        if (-not $go) { $go = ((Read-Host '      Continue anyway? [y/N]').Trim() -match '^(y|yes)$') }
+        if (-not $go) { return $ip }
+    }
+
+    if (-not $Script:AskPassPath) { New-AskPass }
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
         $sec = Read-Host '  Router admin password (kept in memory only; just Enter to be asked each time)' -AsSecureString
         $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
@@ -553,12 +730,9 @@ function Start-Login {
         }
 
         $Script:Password = $pw
-        Set-PasswordEnv $pw
         if (Test-Login $ip) { Write-Ok 'Logged in.'; return $ip }
 
         $Script:Password = $null
-        Clear-PasswordEnv
-        New-AskPass
         Write-Bad 'That did not work. Is it your router''s admin password?'
     }
     return $ip
@@ -582,6 +756,7 @@ function Get-Payload {
         if ($i -ge 0) {
             $lines = $text.Substring($i) -split "`r?`n"
             $id = ($lines[0] -split ' ')[1]
+            if ($id -notmatch '^[0-9a-f]{12}$') { return $null }
             $b64 = (($lines | Select-Object -Skip 1) -join '') -replace '\s', ''
             [System.IO.File]::WriteAllBytes($tmp, [Convert]::FromBase64String($b64))
             return @{ Path = $tmp; Id = $id }
@@ -600,7 +775,7 @@ function Get-Payload {
 function Read-YesNo {
     # Enter or Y = yes, N = no. Never asks when nobody is there to answer.
     param([string]$Question)
-    if ($env:BE3600_ASSUME_YES) { return $true }             # test hook
+    if ($Script:Testing -and $env:BE3600_ASSUME_YES) { return $true }     # test hook
     if ([Console]::IsInputRedirected) { return $false }
     $a = (Read-Host "  $Question [Enter = yes, N = no]").Trim()
     return ($a -notmatch '^(n|no)$')
@@ -609,7 +784,8 @@ function Read-YesNo {
 function Install-OnRouter {
     param([string]$Ip, $Payload)
     Write-Step 'install' 'Putting the screen saver on your router'
-    $remote = "rm -rf /tmp/be3600-setup && mkdir -p /tmp/be3600-setup && cd /tmp/be3600-setup && gunzip -c | tar xf - && BE3600_VERSION=$($Payload.Id) sh setup/router-install.sh"
+    # Unpacked in a fresh private folder on the router, and removed afterwards; the installer's own exit code is kept.
+    $remote = 'D=$(mktemp -d /tmp/be3600-setup.XXXXXX) && cd $D && gunzip -c | tar xf - && BE3600_VERSION={0} sh setup/router-install.sh; R=$?; cd /; rm -rf $D; exit $R' -f $Payload.Id
     $r = Invoke-Ssh -Ip $Ip -Remote $remote -InputFile $Payload.Path
     foreach ($l in ($r.Out -split "`r?`n")) { if ($l.Trim()) { Write-Info $l.TrimEnd() } }
     if ($r.Code -eq 0) { Write-Ok 'The screen saver is installed and running.'; return }
@@ -661,9 +837,10 @@ function Offer-Remember {
     Write-Box @(
         'Remember this computer?',
         '',
-        'Studio Link keeps a private key file on this computer, so',
-        'you never type the password again. Anyone using your',
-        'Windows account could then reach the router.',
+        'Studio Link keeps a private key on this computer, locked',
+        'with a passphrase that only your Windows account can open,',
+        'so you never type the password again. Anyone signed in as',
+        'you can reach the router.',
         'Undo any time:  Studio-Link.cmd -Forget'
     ) 'Yellow'
     if (-not (Read-YesNo 'Remember it?')) { return }
@@ -672,10 +849,13 @@ function Offer-Remember {
         $keygen = Get-Exe 'ssh-keygen.exe'
         if (-not $keygen) { throw 'ssh-keygen.exe was not found' }
         [void][System.IO.Directory]::CreateDirectory($Script:StateDir)
-        foreach ($p in $Script:KeyPath, ($Script:KeyPath + '.pub')) { if (Test-Path -LiteralPath $p) { [System.IO.File]::Delete($p) } }
+        Remove-KeyFiles
 
-        $p = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /s /c `"`"$keygen`" -q -t ed25519 -N `"`" -C $($Script:KeyComment) -f `"$($Script:KeyPath)`"`"" -NoNewWindow -Wait -PassThru
+        $phrase = New-Phrase
+        Save-KeyPass $phrase                                   # kept first, so the key can never be locked out
+        $p = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /s /c `"`"$keygen`" -q -t ed25519 -N $phrase -C $($Script:KeyComment) -f `"$($Script:KeyPath)`"`"" -NoNewWindow -Wait -PassThru
         if ($p.ExitCode -ne 0 -or -not (Test-Path -LiteralPath ($Script:KeyPath + '.pub'))) { throw 'could not make a key' }
+        Lock-ToUser $Script:KeyPath
 
         $af = $Script:AuthKeys
         $remote = "mkdir -p /etc/dropbear && touch $af && chmod 600 $af && sed -i '/ $($Script:KeyComment)`$/d' $af && cat >> $af"
@@ -689,18 +869,19 @@ function Offer-Remember {
         $pw = $Script:Password
         $Script:Password = $null
         $script:Key = $Script:KeyPath
+        $script:KeyPass = $phrase
         if (Test-Login $Ip) {
-            Clear-PasswordEnv
             Write-Ok 'Remembered. Next time there is nothing to type.'
             return
         }
         $script:Key = $null
+        $script:KeyPass = $null
         $Script:Password = $pw
         throw 'the router did not accept the key'
     }
     catch {
         Write-Warn ("Could not set that up ($($_.Exception.Message)). Nothing is lost; you will just be asked for the password each time.")
-        foreach ($p in $Script:KeyPath, ($Script:KeyPath + '.pub')) { try { [System.IO.File]::Delete($p) } catch {} }
+        Remove-KeyFiles
     }
 }
 
@@ -712,7 +893,7 @@ function Invoke-Forget {
         if ($r.Code -eq 0) { Write-Ok 'This computer''s key was removed from the router.' }
         else { Write-Warn "Could not remove the key from the router ($(Get-LastLine $r.Out))." }
     }
-    foreach ($p in $Script:KeyPath, ($Script:KeyPath + '.pub')) { try { [System.IO.File]::Delete($p) } catch {} }
+    Remove-KeyFiles
     Write-Ok 'Forgotten. Studio Link will ask for your password again.'
 }
 
@@ -722,6 +903,12 @@ function Invoke-Forget {
 # ----------------------------------------------------------------------------
 
 Show-Banner 'GL.iNet Router Screen Saver (BE3600)' 'Studio Link'
+
+# The single-file download unpacks this script to a temp file (SELF is set by it); remove
+# that file as soon as it is running, so nothing is left behind, even after Ctrl+C.
+if ($env:SELF -and $MyInvocation.MyCommand.Path) { try { [System.IO.File]::Delete($MyInvocation.MyCommand.Path) } catch {} }
+
+$Script:Token = New-Token
 
 if ($Forget) {
     try { Invoke-Forget (Start-Login) }
@@ -739,7 +926,10 @@ catch {
 }
 
 try {
-    if ($DryRun) { Write-Warn 'DRY RUN: files are checked but nothing is sent.' }
+    if ($DryRun) {
+        Write-Warn 'DRY RUN: files are checked but nothing is sent.'
+        Write-Warn ('To pair a page by hand, open: ' + $Script:StudioUrl + '#link=' + $Script:Token)
+    }
     else {
         $ip = Start-Login
         if ($ip -and (Test-QuietLogin)) {
@@ -759,6 +949,8 @@ try {
         'Press Ctrl+C to stop.'
     ) 'Green'
 
+    if ($Script:Testing) { Write-Warn ('TEST pairing link: ' + $Script:StudioUrl + '#link=' + $Script:Token) }
+
     $openAt = (Get-Date).AddSeconds(6)
     $opened = ($NoBrowser -or $DryRun -or [bool]$env:BE3600_NO_BROWSER)
 
@@ -768,9 +960,9 @@ try {
             Start-Sleep -Milliseconds 100
             if (-not $opened -and (Get-Date) -gt $openAt) {
                 $opened = $true
-                if (-not $Script:Pinged) {          # the page is not open yet: open it
+                if (-not $Script:Paired) {          # no page has paired yet: open one, carrying the token
                     Write-Ok 'Opening Motion Studio in your browser'
-                    try { Start-Process $Script:StudioUrl } catch {}
+                    try { Start-Process ($Script:StudioUrl + '#link=' + $Script:Token) } catch {}
                 }
             }
         }

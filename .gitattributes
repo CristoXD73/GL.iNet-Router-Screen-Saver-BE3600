@@ -11,7 +11,12 @@ setup/** text eol=lf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 
+# The single-file downloads are served exactly as stored (their checksums are published),
+# so git must never convert their line endings.
+studio/downloads/* -text
+
 # Never touch these.
 *.bea binary
 *.gz binary
 *.png binary
+router/usr/bin/be3600-player binary

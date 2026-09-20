@@ -47,19 +47,32 @@ ssh_open() {   # is something answering on SSH at $1?
     if command -v nc >/dev/null 2>&1; then nc -z -w 2 "$1" 22 >/dev/null 2>&1; else return 0; fi
 }
 
+# A router address is a plain IP address or name: letters, digits, dots and dashes, and
+# never something that could be read as an option (a leading dash).
+valid_host() {
+    case "$1" in ''|-*|*[!A-Za-z0-9.-]*) return 1 ;; esac
+    return 0
+}
+
 ask_address() {
     printf '      Router address (e.g. 192.168.8.1): ' >/dev/tty
     read -r ANSWER </dev/tty
+    valid_host "$ANSWER" || { printf '      That does not look like an address.\n' >&2; exit 1; }
     printf '%s' "$ANSWER"
 }
+
+if [ -n "$ROUTER" ] && ! valid_host "$ROUTER"; then
+    printf 'The router address must be like 192.168.8.1 (letters, digits, dots and dashes only).\n' >&2
+    exit 1
+fi
 
 # Only a few well-known addresses are probed (never a scan): the one that worked
 # last time, this computer's default gateway, and GL.iNet's factory address.
 find_router() {
     [ -n "$ROUTER" ] && { ok "Using $ROUTER (you asked for it)"; return; }
     SAVED=""; [ -f "$STATE_FILE" ] && SAVED="$(head -n 1 "$STATE_FILE")"
-    for C in $SAVED "$(gateway)" 192.168.8.1; do
-        [ -n "$C" ] || continue
+    for C in "$SAVED" "$(gateway)" 192.168.8.1; do
+        valid_host "$C" || continue
         if ssh_open "$C"; then
             ROUTER="$C"
             if [ "$C" = "$SAVED" ]; then ok "Router found at $C (remembered from last time)"
@@ -74,16 +87,36 @@ find_router() {
 
 printf '\n  %s###%s  %sGL.iNet Router Screen Saver (BE3600)%s\n  %s###%s  One-click installer\n' "$CY" "$RS" "$BD" "$RS" "$CY" "$RS"
 
+# A plain IPv4 address that is not on a home or office network: ask before a password goes there.
+confirm_address() {
+    case "$1" in
+        10.*|127.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) return 0 ;;
+        [0-9]*.[0-9]*.[0-9]*.[0-9]*)
+            printf '      %s is not an address on a home or office network. Your password would travel to it.\n      Continue anyway? [y/N] ' "$1" >/dev/tty
+            read -r A </dev/tty
+            case "$A" in y|Y|yes|YES) return 0 ;; *) exit 1 ;; esac ;;
+    esac
+    return 0
+}
+
 step "1/3" "Finding your router"
 find_router
+confirm_address "$ROUTER"
 
 step "2/3" "Packing the files"
 command -v ssh >/dev/null 2>&1 || { printf '      %sx%s   ssh was not found.\n' "$RD" "$RS"; exit 1; }
 ok "Ready"
 
-SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
-[ -n "$KEY" ] && SSH_OPTS="$SSH_OPTS -i $KEY -o BatchMode=yes"
-REMOTE='rm -rf /tmp/be3600-setup && mkdir -p /tmp/be3600-setup && cd /tmp/be3600-setup && tar xf - && sh setup/router-install.sh'
+run_ssh() {
+    if [ -n "$KEY" ]; then
+        ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -i "$KEY" -o BatchMode=yes "$@"
+    else
+        ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$@"
+    fi
+}
+# Unpacked in a fresh private folder on the router, and removed afterwards; the installer's own exit code is kept.
+# shellcheck disable=SC2016  # the $ signs are meant to expand on the router, not here
+REMOTE='D=$(mktemp -d /tmp/be3600-setup.XXXXXX) && cd $D && tar xf - && sh setup/router-install.sh; R=$?; cd /; rm -rf $D; exit $R'
 export COPYFILE_DISABLE=1   # macOS tar: don't add ._ resource-fork files
 
 ATTEMPT=0
@@ -93,10 +126,7 @@ while :; do
     printf '\n  %sType your router admin password when asked (nothing shows while you type).%s\n\n' "$YE" "$RS"
 
     RC=0
-    # SC2086: $SSH_OPTS must word-split into separate options.
-    # SC2029: $REMOTE is meant to expand here, on this side, before it is sent.
-    # shellcheck disable=SC2086,SC2029
-    tar --format ustar -cf - router setup animations | ssh $SSH_OPTS "root@$ROUTER" "$REMOTE" || RC=$?
+    tar --format ustar -cf - router setup animations | run_ssh "root@$ROUTER" "$REMOTE" || RC=$?
 
     # Exit 3: the address answered, but it is not a BE3600 (e.g. your main router).
     if [ "$RC" -eq 3 ] && [ "$ATTEMPT" -lt 3 ]; then

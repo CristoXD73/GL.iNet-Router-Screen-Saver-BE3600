@@ -93,8 +93,17 @@ does the same.) Windows may warn about the downloaded `.cmd`; choose *Keep* and 
 **Connected, but the slots say "Empty" and it isn't right?** Close Studio Link and start it
 again; it says "no router password" on the page if it was started without one.
 
+**The page says "Studio Link found, connecting..."?** Studio Link only talks to a page that
+holds its secret token. It opens a new Motion Studio tab with the token a few seconds after it
+starts, and any other Motion Studio tab you already have open pairs by itself. If no tab
+opened, close Studio Link and start it again. If you restarted Studio Link, the old token is
+gone; the new tab pairs again automatically.
+
+**"This Studio Link is out of date"?** Older versions don't use the token and are no longer
+accepted. Download the new one from the page.
+
 **The password keeps being asked?** Say yes to *Remember this computer* the first time
-and it never asks again. The remembered login is a key file in
+and it never asks again. The remembered login is a passphrase-locked key file (its passphrase is held by Windows DPAPI, the macOS Keychain or the Linux keyring; a Linux computer without `secret-tool` isn't offered it) in
 `%LOCALAPPDATA%\be3600-screensaver\studio-key` (Mac/Linux: `~/.config/be3600-screensaver/studio-key`).
 To undo it, run `Studio-Link.cmd -Forget` (`python3 studio-link.py --forget`), which also
 removes the key from the router. If the router was reset, Studio Link notices and asks for
@@ -104,6 +113,8 @@ the password again.
 Studio Link carries the screen saver's files and installs them; your settings and
 animations are kept. Answering N skips it (Motion Studio then can't show or change
 animations until it is installed).
+
+**"The router address must be like 192.168.8.1"?** Router addresses may only contain letters, digits, dots and dashes; anything else is refused on purpose.
 
 **"That device is not a GL-BE3600"?** The address it found belongs to another router.
 Start it with the right one: `Studio-Link.cmd -Router 192.168.x.x`.
@@ -116,8 +127,10 @@ Still not connecting?
   copy is already running; close it. To use another port: `Studio-Link.cmd -Port 8792`
   (the page always looks at 8791, so this is only for troubleshooting).
 * **Using a copy of Motion Studio on your own web address?** Studio Link only accepts the
-  official page, a local file, and `localhost`. Set `STUDIO_LINK_ORIGINS` to your
-  address before starting it.
+  official page and `localhost`. Set `STUDIO_LINK_ORIGINS` to your address before starting
+  it (and `STUDIO_LINK_URL` to the page to open). A page opened straight from a file is
+  refused on purpose; add `null` to `STUDIO_LINK_ORIGINS` only if you accept that any
+  sandboxed web page could then also talk to Studio Link.
 * **Your browser blocks it anyway** (some do). Nothing is lost: save the file and drag it
   onto **`Set-Animation.cmd`** instead.
 
