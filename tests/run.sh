@@ -442,7 +442,7 @@ fi
 
 
 echo "== line endings: nothing the router reads may contain a carriage return =="
-BADCR="$(grep -rlI "$(printf '\r')" router setup tests tools/*.py tools/make-sample-bea.py install.sh set-animation.sh studio-link.sh docs README.md 2>/dev/null)"
+BADCR="$(grep -rlI --exclude='*.ps1' "$(printf '\r')" router setup tests tools/*.py tools/make-sample-bea.py install.sh set-animation.sh studio-link.sh docs README.md 2>/dev/null)"
 if [ -z "$BADCR" ]; then pass "no CR characters in router/, setup/, scripts or docs"; else fail "CR found in: $BADCR"; fi
 
 
