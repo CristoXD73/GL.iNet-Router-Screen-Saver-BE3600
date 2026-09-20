@@ -14,15 +14,17 @@ local PACK =
 
 local FRAME_BYTES = 43168
 
--- Test hooks (unused in normal operation):
+-- Test hooks (unused in normal operation; they work only when BE3600_TESTING is set):
 --   BE3600_FB     framebuffer path; point it at an ordinary file to test on a PC
 --   BE3600_LOOPS  exit after this many complete passes instead of looping forever
+local TESTING = os.getenv("BE3600_TESTING") ~= nil
+
 local FB_PATH =
-    os.getenv("BE3600_FB") or
+    (TESTING and os.getenv("BE3600_FB")) or
     "/dev/fb0"
 
 local MAX_LOOPS =
-    tonumber(os.getenv("BE3600_LOOPS") or "")
+    TESTING and tonumber(os.getenv("BE3600_LOOPS") or "") or nil
 
 local loops = 0
 

@@ -17,16 +17,21 @@ The first time, it also puts the screen saver on your router if it is not there 
 Enter to agree), and offers to remember this computer so you never type the password again
 (--forget undoes that). It then opens Motion Studio in your browser.
 
-Only pages served from the Motion Studio site, a local file, or localhost are accepted.
-To allow another site (for example your own fork's GitHub Pages address) set
-STUDIO_LINK_ORIGINS to a comma-separated list before starting it.
+Who may use it: only a page served from the Motion Studio site (or localhost) AND that
+holds this run's secret token. The token is made fresh each time Studio Link starts and is
+handed to the page in the address Studio Link opens, so other websites, other programs and
+other users on this computer cannot drive it. To allow another site (for example your own
+fork's GitHub Pages address) set STUDIO_LINK_ORIGINS to a comma-separated list.
 """
 import argparse
 import atexit
 import getpass
+import hmac
+import ipaddress
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -43,18 +48,32 @@ FRAME_BYTES = 43168
 MAX_BODY = 32 * 1024 * 1024
 MAX_SECONDS = 25
 
-ALLOWED_ORIGINS = {"https://cristoxd73.github.io", "null"}
-ALLOWED_ORIGINS.update(o.strip() for o in os.environ.get("STUDIO_LINK_ORIGINS", "").split(",") if o.strip())
+# Test hooks (a stand-in ssh, answering "yes" for you) only work when BE3600_TESTING is set,
+# so nothing in a normal environment can switch them on by accident.
+TESTING = bool(os.environ.get("BE3600_TESTING"))
+
+# "null" (a sandboxed page or a local file) is NOT accepted by default: any website can
+# produce that origin. Add it yourself in STUDIO_LINK_ORIGINS if you open a local copy.
+ORIGIN_SHAPE = re.compile(r"^(null|https?://[A-Za-z0-9.-]+(:\d+)?)$")
+ALLOWED_ORIGINS = {"https://cristoxd73.github.io"}
+ALLOWED_ORIGINS.update(o.strip() for o in os.environ.get("STUDIO_LINK_ORIGINS", "").split(",")
+                       if ORIGIN_SHAPE.match(o.strip()))
 LOCAL_ORIGIN = re.compile(r"^http://(localhost|127\.0\.0\.1)(:\d+)?$")
 LOCAL_HOST = re.compile(r"^(localhost|127\.0\.0\.1)(:\d+)?$")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
+HOST_OK = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")   # an address or name, never an option
+TOKEN_HEADER = "X-Studio-Token"
 
 STATE_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
                           "be3600-screensaver", "router")
 KEY_FILE = os.path.join(os.path.dirname(STATE_FILE), "studio-key")     # the "remember this computer" key
 KEY_COMMENT = "be3600-studio-link-" + re.sub(r"[^A-Za-z0-9_-]+", "-", socket.gethostname() or "computer")[:30]
+VAULT_SERVICE = "be3600-studio-link"
 AUTH_KEYS = "/etc/dropbear/authorized_keys"
-STUDIO_URL = os.environ.get("STUDIO_LINK_URL") or "https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/"
+DEFAULT_STUDIO_URL = "https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/"
+STUDIO_URL = os.environ.get("STUDIO_LINK_URL") or DEFAULT_STUDIO_URL
+if not re.match(r"^(https://[A-Za-z0-9.-]+(:\d+)?/[^\s#]*|http://(localhost|127\.0\.0\.1)(:\d+)?/[^\s#]*)$", STUDIO_URL):
+    STUDIO_URL = DEFAULT_STUDIO_URL                 # never open file:, javascript: or anything odd
 
 # In the single-file download the files the router needs are packed in here as
 # (version id, base64 of a .tar.gz); from a clone of the repo they are packed on the fly.
@@ -64,20 +83,32 @@ PAYLOAD = None  # __PAYLOAD__
 class Config:
     router = None
     key = None
+    key_pass = None                                # the remembered key's passphrase (from the keychain), memory only
     dry_run = False
-    ssh = os.environ.get("BE3600_SSH", "ssh")      # test hook: a stand-in for ssh
+    ssh = (os.environ.get("BE3600_SSH") or "ssh") if TESTING else "ssh"    # test hook: a stand-in for ssh
     password = None                                # kept in memory only
     askpass = None
     sent = 0
     lock = threading.Lock()
     found = None
-    pinged = False                                 # has the Motion Studio page found us yet?
+    token = None                                   # this run's secret; the page must present it
+    paired = False                                 # has a page proved it holds the token yet?
 
 
 def origin_allowed(origin):
+    """A browser page must come from an allowed origin. A request with no Origin header is
+    not a browser page; it is let through here and still has to hold the token."""
     if not origin:
-        return True                                  # not a browser (curl and friends)
+        return True
     return origin in ALLOWED_ORIGINS or bool(LOCAL_ORIGIN.match(origin))
+
+
+def token_ok(given):
+    return bool(Config.token) and bool(given) and hmac.compare_digest(str(given), Config.token)
+
+
+def valid_host(h):
+    return bool(h) and bool(HOST_OK.match(h))
 
 
 def lib_name(raw):
@@ -152,7 +183,9 @@ def find_router():
     except OSError:
         pass
     cands += [default_gateway(), "192.168.8.1"]
-    for c in dict.fromkeys(x for x in cands if x):
+    # Anything that is not a plain address or name (for example text that looks like an ssh
+    # option) is dropped, whether it came from the saved file or from the network.
+    for c in dict.fromkeys(x for x in cands if valid_host(x)):
         if ssh_open(c):
             Config.found = c
             return c
@@ -197,16 +230,27 @@ def run_ssh(ip, remote, stdin_path=None):
     """Run one command on the router. -> (exit code, its output).
 
     With a key or a held password nothing is asked and the router's output comes back.
-    Otherwise ssh asks for the password on this terminal, as Set-Animation does."""
+    Otherwise ssh asks for the password on this terminal, as Set-Animation does.
+    A secret (the password, or the remembered key's passphrase) goes only into the
+    environment of this one ssh process, through the askpass helper, never onto a command line."""
     args = [Config.ssh]
     env = dict(os.environ)
     quiet = quiet_login()
+    secret = None
     if Config.key:
-        args += ["-i", Config.key, "-o", "BatchMode=yes"]
+        args += ["-i", Config.key, "-o", "IdentitiesOnly=yes"]
+        if Config.key_pass is not None:
+            args += ["-o", "NumberOfPasswordPrompts=1"]          # ssh asks for the key's passphrase
+            secret = Config.key_pass
+        else:
+            args += ["-o", "BatchMode=yes"]
     elif Config.password is not None:
         args += ["-o", "NumberOfPasswordPrompts=1"]
-        env.update(SSH_ASKPASS=Config.askpass, SSH_ASKPASS_REQUIRE="force",
-                   BE3600_STUDIO_PW=Config.password)
+        secret = Config.password
+    if secret is not None:
+        if not Config.askpass:
+            Config.askpass = make_askpass()
+        env.update(SSH_ASKPASS=Config.askpass, SSH_ASKPASS_REQUIRE="force", BE3600_STUDIO_PW=secret)
         env.setdefault("DISPLAY", "studio-link")
     args += ["-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", "root@" + ip, remote]
 
@@ -311,7 +355,8 @@ def send_file(data, name):
     if not quiet_login():
         print("\n  Type your router admin password here when asked.\n"
               "  (Nothing shows while you type - that is normal.)\a\n", flush=True)
-    remote = "cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea %s && rm -f /tmp/be3600-new.bea" % name
+    # A fresh private temp name on the router each time (never a fixed, guessable path).
+    remote = "T=$(mktemp /tmp/be3600-new.XXXXXX) && cat > $T && be3600-anim set $T %s; R=$?; rm -f $T; exit $R" % name
 
     fd, tmp = tempfile.mkstemp(suffix=".bea")
     try:
@@ -338,7 +383,7 @@ def send_file(data, name):
     msg = ("The router did not accept that file. The usual reason: it already holds 3 animations. "
            "Give the file a name you already use to replace one, or remove one below.")
     say("x", "The router did not accept that file (%s)." % (last_line(out) or "see the message above"))
-    return 422, "Unprocessable Entity", {"ok": False, "message": msg, "detail": (out or "").strip()[:600]}
+    return 422, "Unprocessable Entity", {"ok": False, "message": msg}
 
 
 # ---------------------------------------------------------------------------------------
@@ -364,7 +409,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", cors)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, " + TOKEN_HEADER)
             # Browsers ask permission before a public web page talks to your own computer.
             self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Access-Control-Max-Age", "600")
@@ -381,6 +426,14 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(403, "Forbidden", {"ok": False, "message": "That page is not allowed to use Studio Link."})
             return None
         return origin or ""
+
+    def _authed(self, cors):
+        """Everything except the bare ping needs this run's secret token."""
+        if token_ok(self.headers.get(TOKEN_HEADER)):
+            return True
+        self._reply(401, "Unauthorized", {"ok": False, "needToken": True,
+                                          "message": "This page has not been paired with Studio Link yet."}, cors)
+        return False
 
     def _locked(self, cors, fn):
         """Run fn() (which talks to the router) unless another job is already doing so."""
@@ -404,18 +457,24 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlsplit(self.path).path
         if path == "/ping":
-            Config.pinged = True
-            self._reply(200, "OK", {"ok": True, "app": "be3600-studio-link", "version": 2, "dryRun": Config.dry_run,
-                                    "sent": Config.sent, "router": Config.router or Config.found,
-                                    "loggedIn": quiet_login()}, cors)
+            # Without the token this only says "I am Studio Link, and I need pairing": no router
+            # address, nothing else. With it, the page gets the full picture.
+            if not token_ok(self.headers.get(TOKEN_HEADER)):
+                self._reply(200, "OK", {"ok": True, "app": "be3600-studio-link", "version": 3, "needToken": True}, cors)
+                return
+            Config.paired = True
+            self._reply(200, "OK", {"ok": True, "app": "be3600-studio-link", "version": 3, "authed": True,
+                                    "dryRun": Config.dry_run, "sent": Config.sent,
+                                    "router": Config.router or Config.found, "loggedIn": quiet_login()}, cors)
         elif path == "/library":
-            self._locked(cors, get_library)
+            if self._authed(cors):
+                self._locked(cors, get_library)
         else:
             self._reply(404, "Not Found", {"ok": False, "message": "Not found."}, cors)
 
     def do_POST(self):
         cors = self._gate()
-        if cors is None:
+        if cors is None or not self._authed(cors):
             return
         parts = urlsplit(self.path)
         query = parse_qs(parts.query)
@@ -450,14 +509,115 @@ class Handler(BaseHTTPRequestHandler):
         self._locked(cors, lambda: send_file(data, name))
 
 
+class BoundedServer(ThreadingHTTPServer):
+    """At most a handful of connections at once, so a flood of them cannot exhaust this computer."""
+    daemon_threads = True
+    _slots = threading.BoundedSemaphore(12)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+
 def make_server(port):
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    return BoundedServer(("127.0.0.1", port), Handler)
 
 
 def test_login(ip):
     """Can we get in without anyone typing (a key, or the password we hold)?"""
     code, out = run_ssh(ip, "echo studio-ok")
     return code == 0 and "studio-ok" in out
+
+
+def is_home_address(ip):
+    """False only for a plain IP address that is not on a home/office network."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return True                                          # a name: cannot tell, so do not nag
+    return a.is_private or a.is_link_local or a.is_loopback
+
+
+# ---- the remembered key's passphrase lives in the system keychain -----------------------
+# The key file on disk is passphrase-protected; the passphrase itself is kept by the
+# operating system (macOS Keychain, or libsecret's secret-tool on Linux), so copying the key
+# file elsewhere gets an attacker nothing.
+
+def vault_kind():
+    if sys.platform == "darwin" and shutil.which("security"):
+        return "keychain"
+    if shutil.which("secret-tool"):
+        return "libsecret"
+    return None
+
+
+def vault_store(secret):
+    k = vault_kind()
+    if k == "keychain":
+        subprocess.run(["security", "add-generic-password", "-U", "-s", VAULT_SERVICE, "-a", KEY_COMMENT, "-w", secret],
+                       check=True, capture_output=True)
+    elif k == "libsecret":
+        subprocess.run(["secret-tool", "store", "--label=BE3600 Studio Link", "service", VAULT_SERVICE,
+                        "account", KEY_COMMENT], input=secret, text=True, check=True, capture_output=True)
+    else:
+        raise RuntimeError("this computer has no keychain (macOS Keychain or secret-tool)")
+
+
+def vault_load():
+    k = vault_kind()
+    try:
+        if k == "keychain":
+            r = subprocess.run(["security", "find-generic-password", "-s", VAULT_SERVICE, "-a", KEY_COMMENT, "-w"],
+                               capture_output=True, text=True)
+        elif k == "libsecret":
+            r = subprocess.run(["secret-tool", "lookup", "service", VAULT_SERVICE, "account", KEY_COMMENT],
+                               capture_output=True, text=True)
+        else:
+            return None
+    except OSError:
+        return None
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def vault_clear():
+    k = vault_kind()
+    try:
+        if k == "keychain":
+            subprocess.run(["security", "delete-generic-password", "-s", VAULT_SERVICE, "-a", KEY_COMMENT], capture_output=True)
+        elif k == "libsecret":
+            subprocess.run(["secret-tool", "clear", "service", VAULT_SERVICE, "account", KEY_COMMENT], capture_output=True)
+    except OSError:
+        pass
+
+
+def upgrade_key(ip):
+    """A key remembered by an earlier version has no passphrase: lock it now, in place."""
+    if vault_kind() is None or not os.path.exists(KEY_FILE):
+        return
+    try:
+        phrase = secrets.token_hex(24)
+        vault_store(phrase)                                  # stored first, so it can never be lost
+        subprocess.run(["ssh-keygen", "-q", "-p", "-f", KEY_FILE, "-P", "", "-N", phrase], check=True, capture_output=True)
+        Config.key_pass = phrase
+        if test_login(ip):
+            say("ok", "Your remembered key is now locked with a passphrase kept in the system keychain.")
+        else:
+            raise RuntimeError("the locked key did not work")
+    except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+        Config.key_pass = None
+        say("!", "Could not lock the remembered key (%s); it keeps working as before." % e)
 
 
 def log_in():
@@ -473,14 +633,26 @@ def log_in():
         return ip
     if os.path.exists(KEY_FILE):
         Config.key = KEY_FILE
+        Config.key_pass = vault_load()                       # None: a key from an earlier version (no passphrase)
         if test_login(ip):
             say("ok", "Logged in (this computer is remembered).")
+            if Config.key_pass is None:
+                upgrade_key(ip)
             return ip
-        Config.key = None
+        Config.key, Config.key_pass = None, None
         say("!", "The remembered login no longer works (was the router reset?). Please type the password.")
     if not sys.stdin.isatty():
         return ip
-    Config.askpass = make_askpass()
+    if not is_home_address(ip):
+        say("!", "%s is not an address on a home or office network. Your password would travel to it." % ip)
+        try:
+            ans = "y" if (TESTING and os.environ.get("BE3600_ASSUME_YES")) else input("  Continue anyway? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ans = ""
+        if ans not in ("y", "yes"):
+            return ip
+    if not Config.askpass:
+        Config.askpass = make_askpass()
     for attempt in range(3):
         try:
             pw = getpass.getpass("  Router admin password (kept in memory only; just Enter to be asked each time): ")
@@ -526,7 +698,7 @@ def get_payload():
 
 def yes_no(question):
     """Enter or Y = yes, N = no. Never asks when nobody is there to answer."""
-    if os.environ.get("BE3600_ASSUME_YES"):                  # test hook
+    if TESTING and os.environ.get("BE3600_ASSUME_YES"):      # test hook
         return True
     if not sys.stdin.isatty():
         return False
@@ -538,8 +710,9 @@ def yes_no(question):
 
 def install_on_router(ip, path, version):
     say("install", "Putting the screen saver on your router")
-    remote = ("rm -rf /tmp/be3600-setup && mkdir -p /tmp/be3600-setup && cd /tmp/be3600-setup && "
-              "gunzip -c | tar xf - && BE3600_VERSION=%s sh setup/router-install.sh" % version)
+    # Unpacked in a fresh private folder on the router, and removed afterwards; the installer's own exit code is kept.
+    remote = ("D=$(mktemp -d /tmp/be3600-setup.XXXXXX) && cd $D && gunzip -c | tar xf - && "
+              "BE3600_VERSION=%s sh setup/router-install.sh; R=$?; cd /; rm -rf $D; exit $R" % version)
     code, out = run_ssh(ip, remote, stdin_path=path)
     for line in out.splitlines():
         if line.strip():
@@ -594,15 +767,22 @@ def offer_remember(ip):
     """After a password login: offer to keep a key so the password is never asked again."""
     if Config.dry_run or Config.key or Config.password is None or os.path.exists(KEY_FILE):
         return
+    if vault_kind() is None:
+        say("!", "This computer has no keychain (macOS Keychain, or 'secret-tool' on Linux), so it cannot remember "
+                 "the login safely. You will type the password each time.")
+        return
     print("\n  Remember this computer?\n"
-          "  Studio Link keeps a private key file on this computer, so you never type the\n"
-          "  password again. Anyone using your account on this computer could then reach the\n"
-          "  router. Undo any time:  python3 studio-link.py --forget", flush=True)
+          "  Studio Link keeps a private key on this computer, locked with a passphrase that\n"
+          "  the system keychain holds for you, so you never type the password again. Anyone who\n"
+          "  can unlock your keychain (you, signed in) can reach the router.\n"
+          "  Undo any time:  python3 studio-link.py --forget", flush=True)
     if not yes_no("Remember it?"):
         return
     try:
         os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", KEY_COMMENT, "-f", KEY_FILE],
+        phrase = secrets.token_hex(24)
+        vault_store(phrase)                                  # kept first, so the key can never be locked out
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", phrase, "-C", KEY_COMMENT, "-f", KEY_FILE],
                        check=True, capture_output=True)
         os.chmod(KEY_FILE, 0o600)
         with open(KEY_FILE + ".pub", "rb") as f:
@@ -616,11 +796,11 @@ def offer_remember(ip):
         if code != 0:
             raise RuntimeError(last_line(out) or "the router refused the key")
         pw, Config.password = Config.password, None
-        Config.key = KEY_FILE
+        Config.key, Config.key_pass = KEY_FILE, phrase
         if test_login(ip):
             say("ok", "Remembered. Next time there is nothing to type.")
             return
-        Config.key, Config.password = None, pw
+        Config.key, Config.key_pass, Config.password = None, None, pw
         raise RuntimeError("the router did not accept the key")
     except (OSError, subprocess.SubprocessError, RuntimeError) as e:
         say("!", "Could not set that up (%s). Nothing is lost; you will just be asked for the password each time." % e)
@@ -629,6 +809,7 @@ def offer_remember(ip):
                 os.unlink(p)
             except OSError:
                 pass
+        vault_clear()
 
 
 def forget(ip):
@@ -644,6 +825,7 @@ def forget(ip):
             os.unlink(p)
         except OSError:
             pass
+    vault_clear()
     say("ok", "Forgotten. Studio Link will ask for your password again.")
 
 
@@ -656,7 +838,10 @@ def main():
     ap.add_argument("--no-browser", action="store_true", help="do not open Motion Studio automatically")
     ap.add_argument("--forget", action="store_true", help="remove the remembered login from the router and this computer")
     a = ap.parse_args()
+    if a.router and not valid_host(a.router):
+        sys.exit("--router must be an address like 192.168.8.1 (letters, digits, dots and dashes only).")
     Config.router, Config.key, Config.dry_run = a.router, a.key, a.dry_run
+    Config.token = secrets.token_urlsafe(24)
 
     print("\n  GL.iNet Router Screen Saver (BE3600) - Studio Link\n", flush=True)
 
@@ -671,6 +856,7 @@ def main():
 
     if a.dry_run:
         say("!", "DRY RUN: files are checked but nothing is sent.")
+        say("!", "To pair a page by hand, open: %s#link=%s" % (STUDIO_URL, Config.token))
     else:
         ip = log_in()
         if ip and quiet_login():
@@ -681,11 +867,14 @@ def main():
           "  Listening on this computer only: 127.0.0.1:%d\n"
           "  Press Ctrl+C to stop.\n" % a.port, flush=True)
 
+    if TESTING:
+        say("!", "TEST pairing link: %s#link=%s" % (STUDIO_URL, Config.token))
+
     def open_studio():
-        if not Config.pinged:                              # the page is not open yet: open it
+        if not Config.paired:                              # no page has paired yet: open one, with the token
             import webbrowser
             say("ok", "Opening Motion Studio in your browser")
-            webbrowser.open(STUDIO_URL)
+            webbrowser.open(STUDIO_URL + "#link=" + Config.token)
     if not (a.no_browser or a.dry_run or os.environ.get("BE3600_NO_BROWSER")):
         t = threading.Timer(6.0, open_studio)
         t.daemon = True

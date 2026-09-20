@@ -70,10 +70,33 @@ function Test-SshPort {
     } catch { return $false } finally { $c.Close() }
 }
 
+# A router address is a plain IP address or name: letters, digits, dots and dashes.
+# Anything else (spaces, & | " and so on, or text that looks like an ssh option) is refused,
+# so it can never change the command line it is placed in.
+function Test-HostName {
+    param([string]$Name)
+    return [bool]($Name -and $Name -match '^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$')
+}
+
+# True for a plain IP address that is NOT on a home/office network (so a password would
+# be about to travel somewhere unexpected). Names cannot be judged, so they pass.
+function Test-UnusualAddress {
+    param([string]$Ip)
+    $a = $null
+    if (-not [System.Net.IPAddress]::TryParse($Ip, [ref]$a)) { return $false }
+    if ($a.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) { return $false }
+    $b = $a.GetAddressBytes()
+    if ($b[0] -eq 10 -or $b[0] -eq 127) { return $false }
+    if ($b[0] -eq 192 -and $b[1] -eq 168) { return $false }
+    if ($b[0] -eq 172 -and $b[1] -ge 16 -and $b[1] -le 31) { return $false }
+    if ($b[0] -eq 169 -and $b[1] -eq 254) { return $false }
+    return $true
+}
+
 function Get-SavedRouter {
     if (Test-Path -LiteralPath $Script:StateFile) {
         $v = (Get-Content -LiteralPath $Script:StateFile -TotalCount 1 -ErrorAction SilentlyContinue)
-        if ($v) { return $v.Trim() }
+        if ($v -and (Test-HostName $v.Trim())) { return $v.Trim() }
     }
     return $null
 }
@@ -91,7 +114,7 @@ function Get-GatewayCandidates {
         Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
             Where-Object { $_.NextHop -and $_.NextHop -ne '0.0.0.0' } |
             Sort-Object { $_.RouteMetric + $_.InterfaceMetric } |
-            ForEach-Object { $_.NextHop } | Select-Object -Unique
+            ForEach-Object { $_.NextHop } | Where-Object { Test-HostName $_ } | Select-Object -Unique
     } catch { @() }
 }
 
@@ -104,10 +127,27 @@ function Read-RouterAddress {
     throw 'No router address given.'
 }
 
+# Finds the router, and makes sure a password is not about to go to a strange address.
 function Resolve-Router {
     param([string]$Override)
+    $ip = Resolve-RouterCore $Override
+    if (Test-UnusualAddress $ip) {
+        Write-Warn "$ip is not an address on a home or office network. Your password would travel to it."
+        $ok = $false
+        if (-not [Console]::IsInputRedirected) { $ok = ((Read-Host '      Continue anyway? [y/N]').Trim() -match '^(y|yes)$') }
+        if (-not $ok) { throw 'Stopped: that address does not look like your router.' }
+    }
+    return $ip
+}
 
-    if ($Override) { Write-Ok "Using $Override (you asked for it)"; return $Override }
+function Resolve-RouterCore {
+    param([string]$Override)
+
+    if ($Override) {
+        if (-not (Test-HostName $Override)) { throw 'The router address must be like 192.168.8.1 (letters, digits, dots and dashes only).' }
+        Write-Ok "Using $Override (you asked for it)"
+        return $Override
+    }
 
     $saved = Get-SavedRouter
     $cands = @()
@@ -170,6 +210,10 @@ function Invoke-RouterSsh {
 
     $ssh = Get-Exe 'ssh.exe'
     if (-not $ssh) { throw 'ssh.exe was not found. Turn on "OpenSSH Client" under Settings > Apps > Optional features.' }
+
+    # These end up inside one cmd.exe command line, so they must be plain.
+    if (-not (Test-HostName $Router)) { throw 'The router address must be like 192.168.8.1 (letters, digits, dots and dashes only).' }
+    if ($Key -and $Key -match '["&|<>^%]') { throw 'The key file path may not contain any of  " & | < > ^ %' }
 
     $keyArgs = ''
     if ($Key) { $keyArgs = "-i `"$Key`" -o BatchMode=yes " }

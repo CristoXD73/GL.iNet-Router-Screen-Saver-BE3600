@@ -14,6 +14,8 @@ param(
 
 . "$PSScriptRoot\lib.ps1"
 
+if ($Router -and -not (Test-HostName $Router)) { Write-Host '  The router address must be like 192.168.8.1 (letters, digits, dots and dashes only).'; exit 1 }
+
 function Read-DroppedPath {
     param([switch]$Again)
     Write-Host ''
@@ -83,7 +85,8 @@ while ($true) {
     # The file's name (letters, digits . _ - only, so it is safe in a shell command)
     # becomes its name in the router's library.
     $libName = ConvertTo-LibName $name
-    $remote = "cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea $libName && rm -f /tmp/be3600-new.bea"
+    # A fresh private temp name on the router each time (never a fixed, guessable path).
+    $remote = 'T=$(mktemp /tmp/be3600-new.XXXXXX) && cat > $T && be3600-anim set $T {0}; R=$?; rm -f $T; exit $R' -f $libName
     $code = Invoke-RouterSsh -Router $ip -Remote $remote -InputFile $Path -Key $Key
 
     Write-Host ''

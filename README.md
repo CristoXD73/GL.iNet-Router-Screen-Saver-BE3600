@@ -44,7 +44,7 @@ Linux: `python3 studio-link.py`). It's a single file, and it does the rest:
 * asks for the router's admin password **once** (*nothing shows while you type,
   that's normal*),
 * **puts the screen saver on the router** if it isn't there yet (press Enter),
-* offers to **remember this computer**, so you never type the password again,
+* offers to **remember this computer** (locked with a passphrase only you can open), so you never type the password again,
 * and opens Motion Studio, already connected.
 
 After that, **Compile** in Motion Studio sends your animation to the router
@@ -138,22 +138,35 @@ helper that does it for the page, using the same check-then-SSH steps as
 
 * It listens on **this computer only** (`127.0.0.1`); nothing else on your
   network can reach it.
-* It only accepts pages from Motion Studio's own site, a local copy of it, or
-  `localhost`. (Running a fork on another address? Set `STUDIO_LINK_ORIGINS`.)
+* **Only your own Motion Studio tab can use it.** Each time Studio Link starts it makes a
+  fresh secret token and opens Motion Studio with that token in the address; the page keeps
+  it and sends it with every request. Other websites, other programs and other users on this
+  computer don't have it, so they get nothing. (A page also has to come from Motion Studio's
+  own site or `localhost`, and a sandboxed page, `Origin: null`, is always refused. Running a
+  fork on another address? Set `STUDIO_LINK_ORIGINS`.)
 * It only ever accepts a valid `.bea` animation (checked here and again on the
   router), and only while you have it running.
 * **Your router password is typed into the Studio Link window**, never into
-  the web page. It is kept in that window's memory only until you close it,
-  and never written to disk.
-* **Remember this computer** (optional, asked once) keeps a private key file on
-  this computer and adds its public half to the router, so the password is never
-  asked again. Anyone using your account on this computer could then reach the
-  router. Undo it any time with `Studio-Link.cmd -Forget` (`python3 studio-link.py --forget`).
+  the web page. It is held in that window's memory only, handed to `ssh` for the
+  moment each call runs (so nothing else it starts, such as your browser, can
+  inherit it), and never written to disk.
+* **Remember this computer** (optional, asked once) keeps a private key on this
+  computer and adds its public half to the router, so the password is never asked
+  again. The key file is **locked with a long random passphrase**, and that passphrase
+  is kept where only you can open it: Windows' per-account encryption (DPAPI), the macOS
+  Keychain, or the Linux keyring. Copying the key file somewhere else gets nobody in.
+  Anyone signed in as you on this computer can still reach the router, so undo it any
+  time with `Studio-Link.cmd -Forget` (`python3 studio-link.py --forget`), which also
+  removes it from the router. (No keychain available? It just doesn't offer to remember.)
 * The single file also carries the screen saver's own files, so it can install
   them on your router. It only does that when you press Enter to agree.
+* **Checking a download:** `studio/downloads/SHA256SUMS` lists the checksums, and the
+  router program inside is built reproducibly from `native/be3600-player.c`
+  (`sh native/build-reproducible.sh --check`). See [`SECURITY.md`](SECURITY.md).
+* It refuses a router address that isn't a plain address, and asks before sending a
+  password to an address outside a home or office network.
 * Your browser may ask to allow "devices on your local network". Choose Allow.
-  Some browsers may block it entirely; then use `Set-Animation` as above.
-</details>
+  Some browsers may block it entirely; then use `Set-Animation` as above.</details>
 <details>
 <summary><b>Smaller files, and making animations without the Studio</b></summary>
 

@@ -159,8 +159,9 @@ def build_cmd(pid, b64):
         "rem on your router, then Motion Studio opens and connects by itself.\n"
         "title GL.iNet Router Screen Saver (BE3600) - Studio Link\n"
         'set "SELF=%~f0"\n'
-        'set "PSF=%TEMP%\\be3600-studio-link.ps1"\n'
-        "rem Unpack the PowerShell code below the first marker into a temp file, run it, delete it.\n"
+        'set "PSF=%TEMP%\\be3600-studio-link-%RANDOM%%RANDOM%%RANDOM%.ps1"\n'
+        "rem Unpack the PowerShell code below the first marker into a temp file with a random name\n"
+        "rem (the program deletes it as soon as it is running), then run it.\n"
         'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$t=[IO.File]::ReadAllText($env:SELF); '
         "$i=$t.IndexOf('#'+'#PS-CODE#'+'#'); $j=$t.LastIndexOf('#'+'#PAYLOAD#'+'# '); if($j -lt 0){$j=$t.Length}; "
         '[IO.File]::WriteAllText($env:PSF,$t.Substring($i,$j-$i))"\n'
@@ -200,9 +201,14 @@ def main():
     files = payload_files()
     pid = files_id(files)
     stale = []
+    built = {}
     for name, build in FILES.items():
+        built[name] = build(pid, payload_b64(files, pid, os.path.join(OUT, name)))
+    # SHA256SUMS lets anyone check a download:  sha256sum -c SHA256SUMS   (PowerShell: Get-FileHash)
+    built["SHA256SUMS"] = "".join("%s  %s\n" % (hashlib.sha256(built[n]).hexdigest(), n)
+                                  for n in sorted(FILES)).encode("ascii")
+    for name, want in built.items():
         path = os.path.join(OUT, name)
-        want = build(pid, payload_b64(files, pid, path))
         have = open(path, "rb").read() if os.path.exists(path) else None
         if check:
             if have != want:

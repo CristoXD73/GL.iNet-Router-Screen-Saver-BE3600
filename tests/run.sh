@@ -9,6 +9,9 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 LUA="${LUA:-lua}"
+# The players' and helpers' test hooks (fake framebuffer, fake ssh, ...) only work with this set.
+BE3600_TESTING=1
+export BE3600_TESTING
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 FAILS=0
@@ -392,6 +395,38 @@ assert pid != 'dev' and 'setup/router-install.sh' in names and 'router/usr/bin/b
 else
     fail "studio-link.py download does not work on its own"
 fi
+
+# Published checksums: a download can be verified with sha256sum -c (Windows: Get-FileHash).
+if command -v sha256sum >/dev/null 2>&1; then
+    if (cd studio/downloads && sha256sum -c SHA256SUMS >/dev/null 2>&1); then
+        pass "studio/downloads/SHA256SUMS matches the downloads"
+    else
+        fail "studio/downloads/SHA256SUMS does not match the downloads"
+    fi
+    WANT_PLAYER="$(cut -d' ' -f1 native/be3600-player.sha256)"
+    HAVE_PLAYER="$(sha256sum router/usr/bin/be3600-player | cut -d' ' -f1)"
+    if [ "$WANT_PLAYER" = "$HAVE_PLAYER" ]; then pass "the committed native player matches native/be3600-player.sha256"
+    else fail "the committed native player does not match native/be3600-player.sha256"; fi
+fi
+
+# The test-only hooks must stay behind BE3600_TESTING.
+for F in native/be3600-player.c router/usr/bin/be3600-player.lua router/usr/bin/be3600-wait-touch.lua; do
+    if grep -q 'BE3600_TESTING' "$F"; then pass "$F: its test hooks are behind BE3600_TESTING"; else fail "$F: test hooks are not gated"; fi
+done
+
+echo "== router addresses can never act as ssh options or commands (shell installers) =="
+for S in install.sh set-animation.sh; do
+    for BAD in '-oProxyCommand=x' '1.2.3.4;id' '1.2.3.4&calc' '1.2.3.4 -o x'; do
+        case "$S$BAD" in set-animation.sh-*) continue ;; esac     # that script only takes IPv4-looking text as an address
+        if sh "$S" "$BAD" </dev/null >"$TMP/badaddr.log" 2>&1; then
+            fail "$S accepted the router address '$BAD'"
+        elif grep -q 'letters, digits, dots and dashes' "$TMP/badaddr.log"; then
+            pass "$S refuses the router address '$BAD'"
+        else
+            fail "$S failed for '$BAD' but not for the right reason: $(head -n 2 "$TMP/badaddr.log")"
+        fi
+    done
+done
 
 
 echo "== Motion Studio's GIF decoder, checked against Pillow =="

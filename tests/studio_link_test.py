@@ -20,7 +20,11 @@ import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+os.environ["BE3600_TESTING"] = "1"        # the test hooks (fake ssh, auto-yes) only work with this
 import studio_link as sl  # noqa: E402
+
+TOKEN = "T" * 32
+sl.Config.token = TOKEN
 
 FAILS = 0
 ORIGIN = "https://cristoxd73.github.io"
@@ -94,9 +98,15 @@ PORT = server.server_address[1]
 threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
-def req(method, path, body=None, headers=None):
+def req(method, path, body=None, headers=None, token=True):
+    """token=True sends this run's secret token (as the paired page does); False sends none."""
+    h = dict(headers or {})
+    if token is True:
+        h["X-Studio-Token"] = TOKEN
+    elif token:
+        h["X-Studio-Token"] = token
     c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=15)
-    c.request(method, path, body=body, headers=headers or {})
+    c.request(method, path, body=body, headers=h)
     r = c.getresponse()
     raw = r.read()
     hdrs = {k.lower(): v for k, v in r.getheaders()}
@@ -113,14 +123,41 @@ s, h, d = req("GET", "/ping", headers={"Origin": ORIGIN})
 check(s == 200 and d["app"] == "be3600-studio-link", "ping answers")
 check(h.get("access-control-allow-origin") == ORIGIN, "the allowed page's origin is echoed back")
 check(h.get("access-control-allow-private-network") == "true", "it answers the browser's local-network permission check")
-check(req("GET", "/ping", headers={"Origin": "null"})[0] == 200, "a page opened from a local file is allowed")
+s, h, d = req("POST", "/remove?name=default", headers={"Origin": "null"})
+check(s == 403 and "access-control-allow-origin" not in h,
+      "a sandboxed page (Origin: null, which ANY website can produce) is refused, with no CORS headers")
+check(req("GET", "/ping", headers={"Origin": "null"})[0] == 403, "and it cannot even ping")
 check(req("GET", "/ping", headers={"Origin": "http://localhost:8123"})[0] == 200, "a page on localhost is allowed")
+check(req("GET", "/ping", headers={"Origin": "http://localhost.evil.example"})[0] == 403, "localhost.evil.example is not localhost")
 s, h, d = req("GET", "/ping", headers={"Origin": "https://evil.example"})
 check(s == 403 and "access-control-allow-origin" not in h, "another website is refused, with no CORS headers")
 check(req("GET", "/ping", headers={"Host": "evil.example", "Origin": ORIGIN})[0] == 403, "a wrong Host header is refused (DNS tricks)")
 s, h, d = req("OPTIONS", "/send", headers={"Origin": ORIGIN, "Access-Control-Request-Method": "POST"})
 check(s == 204 and h.get("access-control-allow-origin") == ORIGIN, "the browser's preflight is answered")
 check(req("GET", "/nothing", headers={"Origin": ORIGIN})[0] == 404, "an unknown path is a 404")
+
+print("== the secret token (other programs and other users cannot drive it) ==")
+sl.Config.paired = False
+s, h, d = req("GET", "/ping", headers={"Origin": ORIGIN}, token=False)
+check(s == 200 and d == {"ok": True, "app": "be3600-studio-link", "version": 3, "needToken": True},
+      "without the token, ping only says 'I am Studio Link, pair with me': no router address, nothing else")
+check(sl.Config.paired is False, "and that does not count as paired")
+s, h, d = req("GET", "/ping", headers={"Origin": ORIGIN}, token="wrong-" + TOKEN[6:])
+check(s == 200 and d.get("needToken") and "router" not in d, "a wrong token is treated as no token")
+for method, path in (("GET", "/library"), ("POST", "/use?name=default"), ("POST", "/remove?name=default"), ("POST", "/send?name=x")):
+    s, h, d = req(method, path, body=b"x" if method == "POST" else None, headers={"Origin": ORIGIN}, token=False)
+    check(s == 401 and d.get("needToken"), "%s %s without the token is refused (401)" % (method, path.split("?")[0]))
+s, h, d = req("GET", "/library", headers={}, token=False)
+check(s == 401, "a plain program with no Origin (curl, another user) is refused too")
+s, h, d = req("POST", "/remove?name=default", headers={"Origin": ORIGIN}, token="a" * 32)
+check(s == 401, "a wrong token cannot remove anything")
+s, h, d = req("GET", "/ping", headers={"Origin": ORIGIN})
+check(s == 200 and d.get("authed") and d["version"] == 3 and "router" in d, "with the token, ping gives the full picture")
+check(sl.Config.paired is True, "and only then counts as paired (so Studio Link does not open another tab)")
+s, h, d = req("OPTIONS", "/send", headers={"Origin": ORIGIN, "Access-Control-Request-Method": "POST",
+                                            "Access-Control-Request-Headers": "x-studio-token"}, token=False)
+check(s == 204 and "X-Studio-Token" in h.get("access-control-allow-headers", ""), "the browser's preflight allows the token header")
+check(sl.token_ok(TOKEN) and not sl.token_ok("") and not sl.token_ok(None) and not sl.token_ok(TOKEN + "x"), "the token check is exact")
 
 print("== sending an animation ==")
 good = bea1()
@@ -130,22 +167,23 @@ s, h, d = req("POST", "/send?name=Sunset%20Test", good, {"Origin": ORIGIN, "Cont
 check(s == 200 and d["ok"] and d["name"] == "Sunset-Test", "a valid animation is sent, named from the file")
 a = ssh_args()
 check(a is not None and "root@127.0.0.1" in a, "it is sent to the router's address over ssh")
-check(a is not None and a[-1] == "cat > /tmp/be3600-new.bea && be3600-anim set /tmp/be3600-new.bea Sunset-Test && rm -f /tmp/be3600-new.bea",
-      "the router is told to save it under that name")
+check(a is not None and a[-1] == "T=$(mktemp /tmp/be3600-new.XXXXXX) && cat > $T && be3600-anim set $T Sunset-Test; R=$?; rm -f $T; exit $R",
+      "the router is told to save it under that name, through a fresh private temp file")
 with open(FAKE + ".stdin", "rb") as f:
     check(f.read() == good, "the file arrives byte for byte")
 
 forget_calls()
 req("POST", "/send?name=" + "..%2F..%2Fx%3B%20rm%20-rf%20~%20%24(id)%60id%60", good, {"Origin": ORIGIN})
 a = ssh_args()
-m = re.search(r"be3600-anim set /tmp/be3600-new\.bea (\S+) && rm", a[-1]) if a else None
+m = re.search(r"be3600-anim set \$T (\S+); R=", a[-1]) if a else None
 check(bool(m) and re.fullmatch(r"[A-Za-z0-9._-]+", m.group(1)) is not None, "a hostile name is reduced to safe characters (%s)" % (m.group(1) if m else "?"))
 
 forget_calls()
 sl.Config.key = "/tmp/some-key"
 req("POST", "/send?name=k", good, {"Origin": ORIGIN})
 a = ssh_args() or []
-check("-i" in a and "/tmp/some-key" in a and "BatchMode=yes" in a, "with a key it logs in without a password prompt")
+check("-i" in a and "/tmp/some-key" in a and "BatchMode=yes" in a and "IdentitiesOnly=yes" in a,
+      "with a key it logs in without a password prompt, using only that key")
 sl.Config.key = None
 
 set_rc(255)
@@ -169,8 +207,12 @@ check(s == 400, "an empty upload is refused")
 check(ssh_args() is None, "none of those ever reached ssh")
 
 sock = socket.create_connection(("127.0.0.1", PORT), timeout=10)
-sock.sendall(("POST /send?name=x HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nOrigin: %s\r\nContent-Length: 99999999999\r\n\r\n" % (PORT, ORIGIN)).encode())
+sock.sendall(("POST /send?name=x HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nOrigin: %s\r\nX-Studio-Token: %s\r\nContent-Length: 99999999999\r\n\r\n" % (PORT, ORIGIN, TOKEN)).encode())
 check(sock.recv(200).startswith(b"HTTP/1.1 413"), "an absurdly large upload is refused before it is read")
+sock.close()
+sock = socket.create_connection(("127.0.0.1", PORT), timeout=10)
+sock.sendall(("POST /send?name=x HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nOrigin: %s\r\nContent-Length: 99999999999\r\n\r\n" % (PORT, ORIGIN)).encode())
+check(sock.recv(200).startswith(b"HTTP/1.1 401"), "and without the token it is turned away before anything is read")
 sock.close()
 
 print("== dry run and the real animation ==")
@@ -324,7 +366,7 @@ set_out("oldversion\nHAVE-ANIM\nLIST-OK\n")
 CALLS.clear()
 sl.confirm_installed("10.0.0.1")
 check(len(CALLS) == 2 and "BE3600_VERSION=abc123abc123 sh setup/router-install.sh" in CALLS[1][0]
-      and CALLS[1][0].startswith("rm -rf /tmp/be3600-setup") and "gunzip -c | tar xf -" in CALLS[1][0],
+      and CALLS[1][0].startswith("D=$(mktemp -d /tmp/be3600-setup.") and "rm -rf $D; exit $R" in CALLS[1][0] and "gunzip -c | tar xf -" in CALLS[1][0],
       "an older version is updated by unpacking the bundle and running the router installer")
 check(CALLS[1][1] == packed, "the bundle arrives byte for byte")
 
@@ -351,7 +393,13 @@ set_rc(0)
 sl.PAYLOAD = None
 sl.Config.key = None
 
-print("== remembering this computer ==")
+print("== remembering this computer (the key is locked; its passphrase lives in the keychain) ==")
+VAULT = {}
+sl.vault_kind = lambda: "fake"
+sl.vault_store = lambda s: VAULT.__setitem__("pw", s)
+sl.vault_load = lambda: VAULT.get("pw")
+sl.vault_clear = lambda: VAULT.clear()
+
 sl.KEY_FILE = os.path.join(WORK, "studio-key")
 os.environ["BE3600_ASSUME_YES"] = "1"
 sl.Config.password = "hunter2"
@@ -360,50 +408,157 @@ set_rc(0)
 set_out("studio-ok\n")
 CALLS.clear()
 sys.stdin = io.StringIO("")                              # no terminal: it must never wait for typing
+
+
+def key_opens_with(phrase):
+    return subprocess.run(["ssh-keygen", "-y", "-P", phrase, "-f", sl.KEY_FILE], capture_output=True).returncode == 0
+
+
 if not shutil.which("ssh-keygen"):
     print("  skip  ssh-keygen is not installed here; the key tests are skipped")
 else:
     sl.offer_remember("10.0.0.1")
     if os.path.exists(sl.KEY_FILE):
+        phrase = VAULT.get("pw")
         add = next((c for c in CALLS if "authorized_keys" in c[0]), None)
         pub = open(sl.KEY_FILE + ".pub", "rb").read()
         check(add is not None and add[1] == pub, "it sends the public key (and only that) to the router")
         check(add is not None and "chmod 600" in add[0] and sl.KEY_COMMENT in add[0] and "sed -i" in add[0],
               "the router file is locked down, and an older key from this computer is replaced")
-        check(sl.Config.key == sl.KEY_FILE and sl.Config.password is None, "it switches to the key and lets go of the password")
+        check(sl.Config.key == sl.KEY_FILE and sl.Config.password is None and sl.Config.key_pass == phrase,
+              "it switches to the key and lets go of the password")
+        check(bool(phrase) and len(phrase) >= 32, "the key's passphrase is long and random")
         check(b"PRIVATE KEY" in open(sl.KEY_FILE, "rb").read() and os.stat(sl.KEY_FILE).st_mode & 0o077 == 0,
               "the private key stays on this computer, readable only by you")
+        check(not key_opens_with("") and key_opens_with(phrase),
+              "the key file is encrypted: it does not open without the passphrase held in the keychain")
+        a = ssh_args() or []
+        env = {}
+        with open(FAKE + ".env") as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.rstrip("\n").split("=", 1)
+                    env[k] = v
+        check("BatchMode=yes" not in a and "NumberOfPasswordPrompts=1" in a and "IdentitiesOnly=yes" in a,
+              "with the locked key ssh is told to ask for its passphrase (and use only that key)")
+        check(env.get("BE3600_STUDIO_PW") == phrase and env.get("SSH_ASKPASS_REQUIRE") == "force" and phrase not in " ".join(a),
+              "the passphrase reaches ssh only through the environment of that one process, never a command line")
 
-        sl.Config.key = None
+        sl.Config.key, sl.Config.key_pass = None, None
         forget_calls()
         CALLS.clear()
-        check(sl.log_in() == "127.0.0.1" and sl.Config.key == sl.KEY_FILE, "next time it logs in with the key, asking nothing")
+        check(sl.log_in() == "127.0.0.1" and sl.Config.key == sl.KEY_FILE and sl.Config.key_pass == phrase,
+              "next time it logs in with the key and the keychain's passphrase, asking nothing")
 
         sl.forget("10.0.0.1")
         gone = next((c for c in CALLS if "sed -i" in c[0] and "authorized_keys" in c[0]), None)
-        check(gone is not None and not os.path.exists(sl.KEY_FILE) and not os.path.exists(sl.KEY_FILE + ".pub"),
-              "forgetting removes the key from the router and from this computer")
+        check(gone is not None and not os.path.exists(sl.KEY_FILE) and not os.path.exists(sl.KEY_FILE + ".pub") and not VAULT,
+              "forgetting removes the key from the router, from this computer and from the keychain")
     else:
         check(False, "it creates a key file")
 
-    sl.Config.key, sl.Config.password = None, "hunter2"     # the router does not accept the key
+    # a key remembered by an earlier version has no passphrase: it is locked on the next start
+    sl.Config.key, sl.Config.key_pass, sl.Config.password = None, None, None
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", sl.KEY_FILE], check=True, capture_output=True)
+    set_out("studio-ok\n")
+    check(key_opens_with(""), "(setup) an old-style key with no passphrase")
+    sl.log_in()
+    check(VAULT.get("pw") and not key_opens_with("") and key_opens_with(VAULT["pw"]) and sl.Config.key_pass == VAULT["pw"],
+          "an older, unlocked key is locked in place on the next start, with its passphrase kept in the keychain")
+    for p in (sl.KEY_FILE, sl.KEY_FILE + ".pub"):
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+    VAULT.clear()
+
+    sl.Config.key, sl.Config.key_pass, sl.Config.password = None, None, "hunter2"     # the router does not accept the key
     set_out("Permission denied\n")
     sl.offer_remember("10.0.0.1")
-    check(sl.Config.key is None and sl.Config.password == "hunter2" and not os.path.exists(sl.KEY_FILE),
-          "if the key does not work it cleans up and keeps the password")
+    check(sl.Config.key is None and sl.Config.password == "hunter2" and not os.path.exists(sl.KEY_FILE) and not VAULT,
+          "if the key does not work it cleans up everything (key, passphrase) and keeps the password")
+
+    sl.vault_kind = lambda: None                                # a computer with no keychain
+    sl.Config.key, sl.Config.password = None, "hunter2"
+    set_out("studio-ok\n")
+    CALLS.clear()
+    sl.offer_remember("10.0.0.1")
+    check(not os.path.exists(sl.KEY_FILE) and not CALLS, "with no keychain it does not remember (it will not store a key unlocked)")
+    sl.vault_kind = lambda: "fake"
 
 with open(sl.KEY_FILE, "w") as f:
     f.write("stale")
-sl.Config.key, sl.Config.password = None, None
+sl.Config.key, sl.Config.key_pass, sl.Config.password = None, None, None
 set_out("Permission denied\n")
 sl.Config.router = "127.0.0.1"
 sl.log_in()
-check(sl.Config.key is None, "a remembered key the router no longer accepts is dropped (it falls back to the password)")
+check(sl.Config.key is None and sl.Config.key_pass is None, "a remembered key the router no longer accepts is dropped (it falls back to the password)")
 os.unlink(sl.KEY_FILE)
 os.environ.pop("BE3600_ASSUME_YES", None)
 sl.run_ssh = _real_run_ssh
 sl.Config.password = None
 set_out(None)
+
+print("== router addresses can never act as options or commands ==")
+check(all(sl.valid_host(h) for h in ("192.168.8.1", "router.lan", "my-router.example.com")), "ordinary addresses and names pass")
+check(not any(sl.valid_host(h) for h in ("", "-oProxyCommand=x", "-l", "a b", "1.2.3.4;id", "1.2.3.4 & calc", "$(id)", "a\nb", "1.2.3.4|x", "../x")),
+      "option-like or command-like text is refused")
+STATE_TMP = os.path.join(WORK, "router-state")
+with open(STATE_TMP, "w") as f:
+    f.write("-oProxyCommand=touch /tmp/pwned\n")
+_probed = []
+_save = (sl.STATE_FILE, sl.default_gateway, sl.ssh_open, sl.Config.router, sl.Config.found)
+sl.STATE_FILE = STATE_TMP
+sl.default_gateway = lambda: "1.2.3.4; rm -rf /"
+sl.ssh_open = lambda ip, timeout=1.5: (_probed.append(ip), False)[1]
+sl.Config.router, sl.Config.found = None, None
+check(sl.find_router() is None and _probed == ["192.168.8.1"],
+      "a hostile saved-address file or gateway text is never probed or passed to ssh (only the factory address was tried)")
+sl.STATE_FILE, sl.default_gateway, sl.ssh_open, sl.Config.router, sl.Config.found = _save
+check(sl.is_home_address("192.168.8.1") and sl.is_home_address("10.1.2.3") and sl.is_home_address("172.16.0.5")
+      and sl.is_home_address("router.lan") and not sl.is_home_address("8.8.8.8") and not sl.is_home_address("172.32.0.1"),
+      "a password is only sent without a warning to a home/office address")
+
+print("== test hooks, origins and addresses only from safe settings ==")
+
+
+def in_fresh_python(env_extra, code):
+    env = {k: v for k, v in os.environ.items() if k != "BE3600_TESTING"}
+    env.update(env_extra)
+    r = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, %r); import studio_link as sl\n%s" % (os.path.join(ROOT, "tools"), code)],
+                       capture_output=True, text=True, env=env)
+    return r.stdout.strip()
+
+
+check(in_fresh_python({"BE3600_SSH": "/tmp/evil", "BE3600_ASSUME_YES": "1"},
+                      "print(sl.Config.ssh, sl.yes_no('x'))") == "ssh False",
+      "without BE3600_TESTING a stand-in ssh and an automatic 'yes' are ignored")
+check(in_fresh_python({"BE3600_TESTING": "1", "BE3600_SSH": "/tmp/fake"}, "print(sl.Config.ssh)") == "/tmp/fake",
+      "with BE3600_TESTING they work (that is how these tests run)")
+check(in_fresh_python({"STUDIO_LINK_ORIGINS": "null, https://a.example, javascript:x, bad origin, http://[::1]"},
+                      "print(sorted(sl.ALLOWED_ORIGINS))") == "['https://a.example', 'https://cristoxd73.github.io', 'null']",
+      "extra origins must look like origins; 'null' has to be asked for by name")
+check(in_fresh_python({}, "print('null' in sl.ALLOWED_ORIGINS)") == "False", "'null' is not allowed by default")
+for bad in ("javascript:alert(1)", "file:///C:/x.html", "http://evil.example/x/", "https://evil.example/x y", "data:text/html,x"):
+    check(in_fresh_python({"STUDIO_LINK_URL": bad}, "print(sl.STUDIO_URL == sl.DEFAULT_STUDIO_URL)") == "True",
+          "the page address to open ignores %r" % bad)
+check(in_fresh_python({"STUDIO_LINK_URL": "https://example.github.io/fork/studio/"}, "print(sl.STUDIO_URL)") == "https://example.github.io/fork/studio/",
+      "a fork's https address is accepted")
+
+print("== a flood of connections cannot exhaust this computer ==")
+held = []
+for _ in range(12):
+    sl.BoundedServer._slots.acquire()
+    held.append(1)
+try:
+    c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
+    c.request("GET", "/ping", headers={"Origin": ORIGIN, "X-Studio-Token": TOKEN})
+    check(c.getresponse().status == 503, "when all its connection slots are busy, more are turned away (503)")
+    c.close()
+finally:
+    for _ in held:
+        sl.BoundedServer._slots.release()
+check(req("GET", "/ping", headers={"Origin": ORIGIN})[0] == 200, "and it serves normally again straight after")
 
 server.shutdown()
 print("\n" + ("%d Studio Link test(s) FAILED." % FAILS if FAILS else "All Studio Link tests passed."))

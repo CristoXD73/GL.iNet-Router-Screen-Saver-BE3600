@@ -104,7 +104,7 @@ fi
 
 # Keep everything across a "keep settings" firmware upgrade (standard OpenWrt list).
 touch /etc/sysupgrade.conf
-KEEP="/usr/bin/be3600-screensaver /usr/bin/be3600-player /usr/bin/be3600-player.lua/usr/bin/be3600-wait-touch.lua /usr/bin/be3600-bea-check.lua /usr/sbin/be3600-anim /usr/sbin/be3600-uninstall /etc/init.d/be3600-screensaver /etc/be3600-screen /etc/rc.d/S99be3600-screensaver /etc/rc.d/K10be3600-screensaver"
+KEEP="/usr/bin/be3600-screensaver /usr/bin/be3600-player /usr/bin/be3600-player.lua /usr/bin/be3600-wait-touch.lua /usr/bin/be3600-bea-check.lua /usr/sbin/be3600-anim /usr/sbin/be3600-uninstall /etc/init.d/be3600-screensaver /etc/be3600-screen /etc/rc.d/S99be3600-screensaver /etc/rc.d/K10be3600-screensaver"
 grep -qxF "# be3600-screensaver" /etc/sysupgrade.conf || echo "# be3600-screensaver" >> /etc/sysupgrade.conf
 for P in $KEEP; do
     grep -qxF "$P" /etc/sysupgrade.conf || echo "$P" >> /etc/sysupgrade.conf

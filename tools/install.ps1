@@ -12,8 +12,10 @@ param(
 
 . "$PSScriptRoot\lib.ps1"
 
+if ($Router -and -not (Test-HostName $Router)) { Write-Host '  The router address must be like 192.168.8.1 (letters, digits, dots and dashes only).'; exit 1 }
+
 $root = Split-Path -Parent $PSScriptRoot
-$tar  = Join-Path $env:TEMP ('be3600-setup-{0}.tar' -f (Get-Random))
+$tar  = Join-Path $env:TEMP ('be3600-setup-{0}.tar' -f [guid]::NewGuid().ToString('N'))
 $code = 1
 
 Show-Banner 'GL.iNet Router Screen Saver (BE3600)' 'One-click installer'
@@ -35,7 +37,8 @@ try {
     Write-Ok ('Ready ({0})' -f (Format-Size (Get-Item -LiteralPath $tar).Length))
 
     # ------------------------------------------------------------------
-    $remote = 'rm -rf /tmp/be3600-setup && mkdir -p /tmp/be3600-setup && cd /tmp/be3600-setup && tar xf - && sh setup/router-install.sh'
+    # Unpacked in a fresh private folder on the router, and removed afterwards; the installer's own exit code is kept.
+    $remote = 'D=$(mktemp -d /tmp/be3600-setup.XXXXXX) && cd $D && tar xf - && sh setup/router-install.sh; R=$?; cd /; rm -rf $D; exit $R'
     $attempt = 0
 
     while ($true) {

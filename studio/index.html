@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- This page loads nothing from anywhere else and may only talk to Studio Link on this computer. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src blob:; connect-src http://127.0.0.1:8791 data: blob:; base-uri 'none'; form-action 'none'">
   <title>BE3600 Motion Studio v5</title>
   <style>
 
@@ -1839,6 +1841,25 @@ console.log(
 
   var linkOk = false, loggedIn = false, busy = false, last = null, libLoaded = false, libBusy = false, linkSig = '', lib = [], libMax = 3;
 
+  // Pairing: Studio Link makes a fresh secret each time it starts and opens this page with it
+  // in the address (#link=...). It is kept here, removed from the address bar, and sent with
+  // every request; without it Studio Link answers nobody. A tab already open picks it up from
+  // the tab Studio Link opened (the browser tells every tab of this site when it changes).
+  var TOKEN = null;
+  try {
+    var pm = /[#&]link=([A-Za-z0-9_-]{20,64})/.exec(location.hash || '');
+    if (pm) {
+      TOKEN = pm[1];
+      try { localStorage.setItem('be3600-link', TOKEN); } catch (e) {}
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    } else {
+      TOKEN = localStorage.getItem('be3600-link');
+    }
+  } catch (e) {}
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'be3600-link') { TOKEN = e.newValue; libLoaded = false; checkLink(); }
+  });
+
   function setState(kind, text, helpText) {
     state.textContent = '';
     var dot = document.createElement('i');
@@ -1853,6 +1874,8 @@ console.log(
   function timed(url, opts, ms) {
     var c = new AbortController(), t = setTimeout(function () { c.abort(); }, ms);
     opts.signal = c.signal;
+    opts.headers = Object.assign({}, opts.headers);
+    if (TOKEN) opts.headers['X-Studio-Token'] = TOKEN;
     return fetch(url, opts).finally(function () { clearTimeout(t); });
   }
 
@@ -1917,6 +1940,7 @@ console.log(
       .then(function (j) {
         if (j.ok) { libLoaded = true; renderSlots(j.items || [], j.max); }
         else if (j.busy) { libLoaded = false; }
+        else if (j.needToken) { libLoaded = false; linkOk = false; checkLink(); }
         else {
           libLoaded = true; slots.classList.add('hidden');
           say('err', j.message || 'Could not read the router.');
@@ -1933,6 +1957,20 @@ console.log(
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || j.app !== 'be3600-studio-link') throw new Error('not Studio Link');
+        if ((j.version || 0) < 3) {                       // an older Studio Link, which is no longer accepted
+          linkOk = false; loggedIn = false; libLoaded = false; slots.classList.add('hidden');
+          setState('bad', 'This Studio Link is out of date',
+            'Close it and download the new one below. Older versions are not accepted any more, for safety.');
+          getLink.classList.remove('hidden');
+          return;
+        }
+        if (!j.authed) {                                  // running, but this page has not been paired yet
+          linkOk = false; loggedIn = false; libLoaded = false; slots.classList.add('hidden');
+          getLink.classList.add('hidden');
+          setState('bad', 'Studio Link found, connecting...',
+            'A new tab opens in a few seconds to pair with it. If it does not, close Studio Link and start it again.');
+          return;
+        }
         linkOk = true; loggedIn = !!j.loggedIn;
         var sig = [j.router, j.dryRun, j.loggedIn].join('|');
         if (sig !== linkSig) { linkSig = sig; libLoaded = false; }   // a different helper answered
@@ -1984,7 +2022,7 @@ console.log(
     if (busy) { say('err', 'One at a time: wait for the current job to finish.'); return; }
     var problem = checkBea(bytes);
     if (problem) { say('err', problem); return; }
-    if (!linkOk) { say('err', 'Studio Link is not running yet (see above).'); checkLink(); return; }
+    if (!linkOk) { say('err', 'Studio Link is not connected yet (see above).'); checkLink(); return; }
 
     busy = true;
     say('', 'Sending "' + name + '"...' + (loggedIn ? '' : ' If the Studio Link window asks for your router password, type it there.'));
@@ -2144,6 +2182,7 @@ console.log(
         var data = new Uint8Array(total), o = 0;
         for (c = 0; c < chunks.length; c++) { data.set(chunks[c], o); o += chunks[c].length; }
         if (!ct || minCode < 2 || minCode > 8) throw new Error('This GIF looks damaged.');
+        if (w * h > 40000000) throw new Error('This GIF is too big to work with (the limit is about 40 million pixels).');
         var idx = gifLzw(minCode, data, w * h);
         if (lf & 0x40) idx = gifDeinterlace(idx, w, h);
         frames.push({ x: x, y: y, w: w, h: h, ct: ct, idx: idx,
@@ -2155,6 +2194,7 @@ console.log(
     }
     if (!frames.length) throw new Error('That GIF has no pictures in it.');
     if (!W || !H) { W = frames[0].w; H = frames[0].h; }
+    if (W * H > 40000000) throw new Error('This GIF is too big to work with (the limit is about 40 million pixels).');
     return { width: W, height: H, frames: frames };
   }
 
@@ -2249,6 +2289,8 @@ console.log(
     say('Reading ' + file.name + '...', 'One moment.');
     file.arrayBuffer().then(function (buf) {
       var g = parseGif(buf);
+      // A GIF can declare up to 65535 x 65535 pixels; refuse the absurd ones before any memory is set aside.
+      if (g.width * g.height > 40000000) throw new Error('That GIF is ' + g.width + ' x ' + g.height + ' pixels, which is too big to work with (the limit is about 40 million pixels, for example 6000 x 6000).');
       if (g.frames.length > 1500) throw new Error('That GIF has ' + g.frames.length + ' pictures; the limit is 1500.');
       // Very large GIFs are shrunk so they fit in memory; the strip is tiny anyway.
       var budget = 160 * 1024 * 1024, per = g.width * g.height * 4, sc = Math.min(1, Math.sqrt(budget / (per * g.frames.length)));

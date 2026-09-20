@@ -26,8 +26,9 @@ local function detect_device()
         return override, "TOUCH_DEVICE"
     end
 
-    -- BE3600_SYS_INPUT is a test hook: a fake /sys/class/input tree.
-    local sys = os.getenv("BE3600_SYS_INPUT") or "/sys/class/input"
+    -- BE3600_SYS_INPUT is a test hook (a fake /sys/class/input tree); it works only when
+    -- BE3600_TESTING is set.
+    local sys = (os.getenv("BE3600_TESTING") and os.getenv("BE3600_SYS_INPUT")) or "/sys/class/input"
 
     for n = 0, 31 do
         local f = io.open(string.format("%s/event%d/device/name", sys, n), "r")
