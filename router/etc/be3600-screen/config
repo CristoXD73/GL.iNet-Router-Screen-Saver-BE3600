@@ -36,3 +36,63 @@ TOUCH_DEVICE=""
 # almost no CPU) when it is installed and falls back to the Lua one; "lua"
 # forces the Lua player, for example to compare the two.
 PLAYER_ENGINE="auto"
+
+# ---------------------------------------------------------------------------------------------
+# Pages: the screen can show more than animations. Swipe along the strip to move between them.
+# Change with:  be3600-anim pages          (lists them all)
+#               be3600-anim pages set "animations clock netspeed vitals"
+#
+#   animations  your saved animations       clock      big clock and date
+#   netspeed    live speed graph            vitals     CPU, memory, storage, temperature
+#   info        uptime, addresses           clients    Wi-Fi devices and signal
+#   internet    up/down and latency         usage      data used today / this month
+#   vpn         VPN tunnels                 health     one-glance "all fine?"
+#   pomodoro    focus timer (touch)         stopwatch  stopwatch (touch)
+#   message     be3600-anim say "..."       guest      guest Wi-Fi switch (hold)
+#   wifiqr      QR code to join a network   weather    needs WEATHER_LAT / WEATHER_LON
+#   custom      your scripts in /etc/be3600-screen/widgets.d  (or custom:NAME)
+# ---------------------------------------------------------------------------------------------
+PAGES="animations"
+
+# Move to the next page by itself after this many seconds without a touch (0 = never).
+AUTOPLAY_SECONDS=0
+
+# Banners over whatever is showing: internet down/back, a device joined, VPN changes, a timer
+# finishing, the router getting hot, the data cap reached. 0 turns them off.
+ALERTS=1
+
+# Night mode: between these times the screen dims to NIGHT_BRIGHTNESS (0 = dark, up to 11).
+# A touch wakes it for 20 seconds. Leave NIGHT_START empty to turn it off.
+NIGHT_START=""
+NIGHT_END=""
+NIGHT_BRIGHTNESS=1
+
+# Show a particular page at particular times, e.g.  SCHEDULE="22:00=clock 07:00=animations"
+SCHEDULE=""
+
+# Clock: 1 = 24-hour, 0 = 12-hour with AM/PM.
+CLOCK_24H=1
+
+# Speed graph units: "bits" (Mb/s) or "bytes" (MB/s).
+SPEED_UNITS="bits"
+
+# Data page: a monthly allowance in GB adds a bar and an alert when it is used up (0 = none).
+DATA_CAP_GB=0
+
+# Internet page: what to ping (an address). Replies are only timed; nothing else is sent.
+PING_TARGET="1.1.1.1"
+
+# Pomodoro timer lengths in minutes.
+POMODORO_FOCUS_MIN=25
+POMODORO_SHORT_MIN=5
+POMODORO_LONG_MIN=15
+
+# Wi-Fi QR page: which network (a section name from /etc/config/wireless). Empty = the guest network.
+# The page shows the password as a QR code to anyone who looks at the screen, so it is opt-in.
+WIFI_QR_SECTION=""
+
+# Weather page: your location (open-meteo.com is asked for the forecast, nothing else is sent).
+WEATHER_LAT=""
+WEATHER_LON=""
+WEATHER_UNITS="C"
+WEATHER_PLACE=""

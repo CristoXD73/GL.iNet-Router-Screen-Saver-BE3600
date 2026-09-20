@@ -17,13 +17,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Lua 5.1, ShellCheck and the tools the tests use
-        run: sudo apt-get update && sudo apt-get install -y lua5.1 shellcheck file python3-pil openssh-client
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 shellcheck file python3-pil openssh-client zbar-tools
 
       - name: ShellCheck
         run: >
           shellcheck install.sh set-animation.sh studio-link.sh setup/*.sh native/build.sh
           native/build-reproducible.sh native/reproducible-inner.sh tests/run.sh
-          router/usr/bin/be3600-screensaver router/usr/sbin/be3600-anim
+          router/usr/bin/be3600-screensaver router/usr/bin/be3600-widgetd router/usr/sbin/be3600-anim router/usr/sbin/be3600-widget-action
           router/etc/init.d/be3600-screensaver
 
       # The shipped router binary must be exactly what native/be3600-player.c builds: the

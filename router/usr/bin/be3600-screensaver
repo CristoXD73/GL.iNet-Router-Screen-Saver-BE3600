@@ -35,6 +35,8 @@ PLAYER="/usr/bin/be3600-player.lua"
 NATIVE="/usr/bin/be3600-player"
 PLAYER_ENGINE="auto"     # auto = the native player if installed, else Lua; "lua" forces Lua
 TOUCH="/usr/bin/be3600-wait-touch.lua"
+WIDGETD="/usr/bin/be3600-widgetd"
+PAGES="animations"       # what can be swiped between: animations and live pages (see be3600-anim pages)
 
 # shellcheck source=/dev/null
 [ -r "$CONF" ] && . "$CONF"
@@ -197,6 +199,45 @@ verify_firmware() {
 
 
 # ------------------------------------------------------------
+# THE HELPER FOR THE LIVE PAGES
+#
+# Some pages (internet, Wi-Fi clients, VPN, weather, ...) need data that be3600-widgetd collects. It runs only
+# while the animation/pages are on screen, and only if PAGES lists a page that needs it.
+# ------------------------------------------------------------
+
+needs_helper() {
+    for PG in $PAGES; do
+        case "$PG" in
+            animations|anim:*|clock|netspeed|vitals|info|usage|pomodoro|stopwatch|message) ;;
+            *) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+WIDGETD_PID=""
+
+start_widgetd() {
+    needs_helper || return 0
+    [ -x "$WIDGETD" ] || return 0
+    alive "$WIDGETD_PID" && return 0
+    "$WIDGETD" >/dev/null 2>&1 &
+    WIDGETD_PID=$!
+}
+
+stop_widgetd() {
+    if [ -n "$WIDGETD_PID" ]; then
+        kill "$WIDGETD_PID" 2>/dev/null || true
+        wait "$WIDGETD_PID" 2>/dev/null || true
+        WIDGETD_PID=""
+    fi
+    for PID in $(ps w | grep '[b]e3600-widgetd' | awk '{print $1}'); do
+        kill "$PID" 2>/dev/null || true
+    done
+}
+
+
+# ------------------------------------------------------------
 # PROCESS CONTROL
 # ------------------------------------------------------------
 
@@ -259,6 +300,7 @@ start_stock() {
 
     # Custom must die FIRST so the two never fight over the framebuffer.
     kill_custom
+    stop_widgetd
 
     # Never leave two GL.iNet instances running.
     stop_stock
@@ -322,6 +364,7 @@ start_custom() {
     fi
 
     log "OWNER = CUSTOM PID=$PLAYER_PID ($ENGINE player)"
+    [ "$ENGINE" = "native" ] && start_widgetd
 
     return 0
 }

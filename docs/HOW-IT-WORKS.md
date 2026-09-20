@@ -138,6 +138,23 @@ Treat the mechanism as a hypothesis; the fix is what was verified.
 * `procd` respawns the supervisor if it exits unexpectedly; `be3600-anim off`
   stops and disables the service so nothing respawns it.
 
+## Screen pages
+
+The native player draws the pages itself (`native/gfx.inc`: anti-aliased shapes and Inter type; `widgets.inc`,
+`pages2.inc`, `pages3.inc`: the pages; `qr.inc`: a QR encoder). A page is a function that draws a 284 x 76 picture
+the way you look at the strip; it is turned into the display's layout when it is sent to the screen. Pages and
+animations are all "slots" in one carousel, so the drag-and-slide of the gestures works between any two of them.
+
+* **Live numbers** (CPU, memory, storage, temperature, speed, data used) come from `/proc` and `/sys` once a second.
+* **Collected data** (ping history, Wi-Fi clients, VPN, guest network, QR details, weather, custom scripts) is written
+  by `be3600-widgetd` to `/tmp/be3600-widgets` as small text files. The supervisor starts it while the screensaver is
+  showing, only if `PAGES` lists a page that needs it.
+* **Housekeeping** runs once a second inside the player, whatever is on screen: timers ring, alerts are read from the
+  helper's `events` file, night mode sets the backlight, the schedule and autoplay move between pages.
+* **Touch on a page:** a swipe moves; a single tap does the page's tap action if it has one (Pomodoro, stopwatch),
+  otherwise goes to the next page; holding a finger down does the hold action (reset, guest Wi-Fi switch).
+* **Tests:** `tests/widgets_test.py` draws every page against a fake router tree and decodes the QR codes;
+  `tests/pages_touch_test.py` drives the touch behaviour; `tests/widgetd_test.py` checks the helper with fake router commands.
 ## Firmware changes
 
 The supervisor remembers which firmware and kernel version it last checked (the

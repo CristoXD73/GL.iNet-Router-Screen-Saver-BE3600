@@ -223,6 +223,71 @@ PLAYER_ENGINE="auto"            # "auto" = fast native player when installed; "l
 ```
 </details>
 
+## Screen pages: more than animations
+
+Swipe along the strip and the picture follows your finger to the next **page**. Besides your animations the
+screen can show live pages in a clean, dark, rounded style (the type is Inter, drawn smoothly by the router itself):
+
+<img src="docs/assets/pages.png" alt="The screen pages: clock, network speed, vitals rings, router info, Wi-Fi clients, internet, data usage, VPN, health, Pomodoro timer, stopwatch, message, guest Wi-Fi switch, Wi-Fi QR code, weather and a custom page" width="640">
+
+Nothing changes until you choose pages. On the router:
+
+```sh
+be3600-anim pages                                            # the list, with what each one is
+be3600-anim pages set "animations clock netspeed vitals internet"
+be3600-anim pages reset                                      # back to animations only
+```
+
+| Page | What it shows |
+|---|---|
+| `clock` | Big time and date, with a seconds bar; drifts a pixel now and then so nothing burns in |
+| `netspeed` | Live download / upload speed and a one-minute graph |
+| `vitals` | CPU, memory, storage and temperature as activity rings |
+| `info` | Uptime, load, LAN / WAN addresses, firmware |
+| `clients` | Wi-Fi devices with their names, addresses and signal strength |
+| `internet` | Online / offline, latency graph, packet loss (pings `PING_TARGET`) |
+| `usage` | Data used today and this month, with a cap bar if you set `DATA_CAP_GB` |
+| `vpn` | WireGuard / OpenVPN tunnels and how long ago they last shook hands |
+| `health` | One glance: is everything fine? Lists what is not |
+| `pomodoro` | Focus / break timer. Tap starts and pauses, hold resets; rings even from another page |
+| `stopwatch` | Tap to start and stop, hold to reset |
+| `message` | A note you set with `be3600-anim say "back at 5" yellow` |
+| `guest` | The guest Wi-Fi as a switch: hold your finger down to turn it on or off |
+| `wifiqr` | A QR code that joins a Wi-Fi network (opt-in: it shows the password to anyone who looks) |
+| `weather` | Current weather (needs `WEATHER_LAT` / `WEATHER_LON`; asks open-meteo.com, nothing else) |
+| `custom` | Your own pages: scripts in `/etc/be3600-screen/widgets.d` (see below) |
+
+And around them:
+
+* **Alerts:** a banner slides in over whatever is showing when the internet goes down or comes back, a
+  device joins, a VPN drops, a timer finishes, the router runs hot or the data cap is reached.
+  `be3600-anim alert "text" warn` sends one by hand. Touch dismisses it. Turn off with `ALERTS=0`.
+* **Autoplay:** `AUTOPLAY_SECONDS=8` moves to the next page by itself; a touch pauses it.
+* **Night mode:** between `NIGHT_START` and `NIGHT_END` the backlight dims to `NIGHT_BRIGHTNESS`
+  (0 = dark). A touch wakes it for 20 seconds and does nothing else.
+* **Schedule:** `SCHEDULE="22:00=clock 07:00=animations"` shows a page at set times.
+
+All settings are documented in `/etc/be3600-screen/config`.
+
+<details>
+<summary>Your own pages</summary>
+
+Put a script in `/etc/be3600-screen/widgets.d/`, for example `solar.sh`, and add `custom:solar` (or `custom`
+for all of them) to `PAGES`. The script prints lines the page understands:
+
+```sh
+# interval: 30            (optional: seconds between runs, at least 5)
+echo "title: Solar"
+echo "big: 3.2 kW"
+echo "line: today 14.1 kWh"
+echo "bar: 78"              # a progress bar, 0-100
+echo "spark: 1 2 4 6 5 7"   # a small graph
+echo "color: green"
+```
+
+It runs as root, at most five seconds each time, and only its first 2 KB is used.
+
+</details>
 ## Good to know
 
 * **Only tested on a GL-BE3600**, firmware 4.8.3. The installer and the

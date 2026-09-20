@@ -26,7 +26,13 @@ maintainer sees it, and a fix and credit (if you want it) once it's resolved.
   would. The page's Content-Security-Policy allows no other address, results are only used if
   they point at those services' own hosts, and a downloaded GIF goes through the same size
   limits as any GIF you choose yourself. Studio Link and its token are never involved.
-* **The downloads** (`studio/downloads/`) are published with `SHA256SUMS`, and the router
+* **Screen pages** are off until you choose them (`be3600-anim pages`). What they touch: the internet page
+  pings `PING_TARGET` (default 1.1.1.1) and times the replies; the weather page asks open-meteo.com for the forecast
+  of the coordinates you put in the config (and only then); the guest switch runs `uci` and `wifi reload` when you
+  hold your finger on it; the Wi-Fi QR page shows the network's password to anyone who can see the screen. Collected
+  data lives in memory (`/tmp/be3600-widgets`, the password file readable only by root). Scripts in
+  `widgets.d` run as root, so only put your own there.
+* **The downloads** (``studio/downloads/``) are published with `SHA256SUMS`, and the router
   program they carry (`router/usr/bin/be3600-player`) is built reproducibly:
   `sh native/build-reproducible.sh --check` proves it matches `native/be3600-player.c`.
 

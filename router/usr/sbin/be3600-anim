@@ -16,6 +16,13 @@
 #   be3600-anim preview [FILE.bea] [SECONDS]
 #                             play FILE (default: the active one) for SECONDS (default 10),
 #                             then restore everything; installs nothing
+#   be3600-anim pages         the pages you can swipe between (animations and live pages)
+#   be3600-anim pages set "animations clock netspeed"
+#                             choose which pages, in which order (also: add NAME, remove NAME, reset)
+#   be3600-anim say "text" [red|green|yellow|cyan|orange]
+#                             put a message on the message page (say --clear removes it)
+#   be3600-anim alert "text" [info|good|warn|bad]
+#                             show a banner on the screen now
 
 SVC="/etc/init.d/be3600-screensaver"
 BEA="/etc/be3600-screen/active.bea"
@@ -23,12 +30,15 @@ CHECK="/usr/bin/be3600-bea-check.lua"
 TOUCH="/usr/bin/be3600-wait-touch.lua"
 LOCKDIR="/tmp/be3600-screen.lock"
 LIB="/etc/be3600-screen/animations"
+CONF="/etc/be3600-screen/config"
+MSG="/etc/be3600-screen/message"
+DATA="/tmp/be3600-widgets"
 RESERVE_KB=20480          # always leave this much free on the router
 MAX_ANIMS=3               # the library holds at most this many animations
 MAX_LOOP_S=25             # and none may loop for longer than this many seconds
 
 usage() {
-    sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -86,6 +96,7 @@ in_library() {   # true if some library file is byte-identical to $1
 
 activate() {   # make $1 the animation that plays, and pick it up now if running
     cp "$1" "$BEA.new" && mv "$BEA.new" "$BEA" || return 1
+    rm -f "$DATA/page"                        # show this animation, not the page that was showing before
     if running; then
         "$SVC" restart
         echo "restarted the screensaver to pick it up."
@@ -322,6 +333,133 @@ preview() {
     echo "done; the screen is back as it was."
 }
 
+# ---- pages: what the screen can show besides animations ---------------------
+PAGE_LIST="clock netspeed vitals info clients internet usage vpn health pomodoro stopwatch message guest wifiqr weather custom"
+
+page_desc() {
+    case "$1" in
+        animations) echo "your saved animations" ;;
+        clock) echo "big clock and date" ;;
+        netspeed) echo "live download / upload speed graph" ;;
+        vitals) echo "CPU, memory, storage and temperature" ;;
+        info) echo "uptime, load, addresses, firmware" ;;
+        clients) echo "Wi-Fi devices with signal strength" ;;
+        internet) echo "internet up/down and latency graph" ;;
+        usage) echo "data used today and this month (DATA_CAP_GB adds a cap bar)" ;;
+        vpn) echo "WireGuard / OpenVPN tunnels" ;;
+        health) echo "one glance: is everything fine?" ;;
+        pomodoro) echo "focus timer (tap start/pause, hold reset)" ;;
+        stopwatch) echo "stopwatch (tap start/stop, hold reset)" ;;
+        message) echo "a message you set with: be3600-anim say" ;;
+        guest) echo "guest Wi-Fi switch (hold to turn on/off)" ;;
+        wifiqr) echo "QR code to join a Wi-Fi network (shows its password to anyone who looks)" ;;
+        weather) echo "weather (needs WEATHER_LAT / WEATHER_LON in the config)" ;;
+        custom) echo "pages made by your scripts in /etc/be3600-screen/widgets.d (or custom:NAME)" ;;
+    esac
+}
+
+page_ok() {   # a page name we know
+    case "$1" in
+        anim:*|custom:*) case "${1#*:}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac; return 0 ;;
+        animations) return 0 ;;
+    esac
+    for P in $PAGE_LIST; do [ "$P" = "$1" ] && return 0; done
+    return 1
+}
+
+conf_get() {
+    sed -n "s/^$1=[\"']\{0,1\}\([^\"'#]*\).*/\1/p" "$CONF" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//'
+}
+
+conf_set() {   # KEY VALUE: replace the line (or add it); the value is written in double quotes
+    if grep -q "^$1=" "$CONF" 2>/dev/null; then
+        sed "s|^$1=.*|$1=\"$2\"|" "$CONF" > "$CONF.new" && mv "$CONF.new" "$CONF"
+    else
+        echo "$1=\"$2\"" >> "$CONF"
+    fi
+}
+
+pages_now() { P="$(conf_get PAGES)"; echo "${P:-animations}"; }
+
+pages_apply() {
+    rm -f "$DATA/page"
+    if running; then "$SVC" restart; echo "restarted the screensaver to apply it."; fi
+}
+
+pages_list() {
+    NOW="$(pages_now)"
+    echo "showing, in this order:  $NOW"
+    echo
+    for P in animations $PAGE_LIST; do
+        case " $NOW " in *" $P "*) M="*" ;; *) M="-" ;; esac
+        printf '  %s %-11s %s\n' "$M" "$P" "$(page_desc "$P")"
+    done
+    echo
+    echo "change with:  be3600-anim pages set \"animations clock vitals\"   (or add NAME / remove NAME / reset)"
+}
+
+pages_cmd() {
+    case "$1" in
+        ''|list) pages_list ;;
+        set)
+            shift
+            [ $# -ge 1 ] || { echo "usage: be3600-anim pages set \"animations clock ...\""; exit 1; }
+            NEW=""
+            for P in $(echo "$*" | tr ',' ' '); do
+                page_ok "$P" || { echo "unknown page '$P'. Run: be3600-anim pages"; exit 1; }
+                NEW="$NEW $P"
+            done
+            conf_set PAGES "${NEW# }"
+            echo "pages: ${NEW# }"
+            pages_apply
+            ;;
+        add)
+            page_ok "$2" || { echo "unknown page '$2'. Run: be3600-anim pages"; exit 1; }
+            case " $(pages_now) " in *" $2 "*) echo "'$2' is already on."; exit 0 ;; esac
+            conf_set PAGES "$(pages_now) $2"
+            echo "pages: $(pages_now)"
+            pages_apply
+            ;;
+        remove)
+            NEW=""
+            for P in $(pages_now); do [ "$P" = "$2" ] || NEW="$NEW $P"; done
+            [ -n "$NEW" ] || { echo "that would leave no pages; use: be3600-anim pages reset"; exit 1; }
+            conf_set PAGES "${NEW# }"
+            echo "pages: ${NEW# }"
+            pages_apply
+            ;;
+        reset)
+            conf_set PAGES "animations"
+            echo "pages: animations"
+            pages_apply
+            ;;
+        *) echo "usage: be3600-anim pages [list | set \"a b c\" | add NAME | remove NAME | reset]"; exit 1 ;;
+    esac
+}
+
+say_cmd() {
+    if [ "$1" = "--clear" ]; then rm -f "$MSG"; echo "message cleared."; return 0; fi
+    TEXT="$1"
+    [ -n "$TEXT" ] || { echo "usage: be3600-anim say \"text\" [red|green|yellow|cyan|orange]   (say --clear removes it)"; exit 1; }
+    [ "${#TEXT}" -le 120 ] || { echo "keep it to 120 characters."; exit 1; }
+    case "$TEXT" in *[![:print:]]*) echo "plain text only, please."; exit 1 ;; esac
+    case "$2" in
+        '') printf '%s\n' "$TEXT" > "$MSG" ;;
+        red|green|yellow|cyan|orange) printf '!%s %s\n' "$2" "$TEXT" > "$MSG" ;;
+        *) echo "colours: red green yellow cyan orange"; exit 1 ;;
+    esac
+    echo "message set."
+    case " $(pages_now) " in *" message "*) ;; *) echo "(it shows on the message page: be3600-anim pages add message)" ;; esac
+}
+
+alert_cmd() {
+    TEXT="$(printf '%s' "$1" | tr -d '|\n' | cut -c1-80)"
+    [ -n "$TEXT" ] || { echo "usage: be3600-anim alert \"text\" [info|good|warn|bad]"; exit 1; }
+    case "$2" in ''|info) L=info ;; good|warn|bad) L="$2" ;; *) echo "levels: info good warn bad"; exit 1 ;; esac
+    mkdir -p "$DATA"
+    echo "$(date +%s)|$L|$TEXT" >> "$DATA/events"
+    echo "sent (it shows while the screensaver is on screen)."
+}
 case "$1" in
 
 on)
@@ -349,6 +487,7 @@ status)
         echo "display:    nothing is drawing to it"
     fi
     if [ -f "$BEA" ]; then lua "$CHECK" "$BEA" 2>&1 | sed 's/^/animation:  /'; else echo "animation:  none installed"; fi
+    echo "pages:      $(pages_now)"
     ;;
 
 set)
@@ -433,6 +572,19 @@ doctor)
 
 preview)
     preview "$2" "$3"
+    ;;
+
+pages)
+    shift
+    pages_cmd "$@"
+    ;;
+
+say)
+    say_cmd "$2" "$3"
+    ;;
+
+alert)
+    alert_cmd "$2" "$3"
     ;;
 
 *)

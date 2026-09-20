@@ -212,11 +212,35 @@ print('%02x%02x' % (d[1], d[0]))
         else
             fail "touch gesture tests failed"
             grep FAIL "$TMP/gest.log"
+        fi
+
+        # The screen pages (clock, graphs, QR code, timers, alerts, night mode, ...): every page is drawn by
+        # the real player against a fake router tree, and the touch-driven ones are driven with fake touches.
+        if python3 tests/widgets_test.py "$TMP/player-native" > "$TMP/wid.log" 2>&1; then
+            pass "screen pages: $(tail -n 1 "$TMP/wid.log")"
+        else
+            fail "screen page tests failed"
+            grep FAIL "$TMP/wid.log"
+        fi
+        if python3 tests/pages_touch_test.py "$TMP/player-native" > "$TMP/pt.log" 2>&1; then
+            pass "screen pages by touch: $(tail -n 1 "$TMP/pt.log")"
+        else
+            fail "screen page touch tests failed"
+            grep FAIL "$TMP/pt.log"
         fi    else
         fail "native player does not compile cleanly: $(cat "$TMP/cc.log")"
     fi
 else
     echo "  skip  no C compiler found"
+fi
+
+
+echo "== the helper for the live pages (be3600-widgetd) and the guest Wi-Fi switch =="
+if python3 tests/widgetd_test.py > "$TMP/wd.log" 2>&1; then
+    pass "widgetd: $(tail -n 1 "$TMP/wd.log")"
+else
+    fail "widgetd tests failed"
+    grep FAIL "$TMP/wd.log"
 fi
 
 

@@ -21,11 +21,11 @@ LOCKPID="$(cat /tmp/be3600-screen.lock/pid 2>/dev/null)"
 if [ -n "$LOCKPID" ] && tr '\0' ' ' < "/proc/$LOCKPID/cmdline" 2>/dev/null | grep -q 'be3600-screensaver'; then
     kill "$LOCKPID" 2>/dev/null
 fi
-for PID in $(ps w | grep -E '[b]e3600-player|[b]e3600-wait-touch.lua' | awk '{print $1}'); do
+for PID in $(ps w | grep -E '[b]e3600-player|[b]e3600-wait-touch.lua|[b]e3600-widgetd' | awk '{print $1}'); do
     kill "$PID" 2>/dev/null
 done
 sleep 1
-rm -rf /tmp/be3600-screen.lock
+rm -rf /tmp/be3600-screen.lock /tmp/be3600-widgets
 rm -f /tmp/be3600-screen.pid /tmp/be3600-player.log
 
 echo "Removing files..."
@@ -34,7 +34,9 @@ rm -f /usr/bin/be3600-screensaver \
       /usr/bin/be3600-player.lua \
       /usr/bin/be3600-wait-touch.lua \
       /usr/bin/be3600-bea-check.lua \
+      /usr/bin/be3600-widgetd \
       /usr/sbin/be3600-anim \
+      /usr/sbin/be3600-widget-action \
       /usr/sbin/be3600-uninstall \
       /etc/init.d/be3600-screensaver \
       /etc/rc.d/S99be3600-screensaver \
@@ -48,7 +50,9 @@ if [ -f /etc/sysupgrade.conf ]; then
               -e "/usr/bin/be3600-player.lua" \
               -e "/usr/bin/be3600-wait-touch.lua" \
               -e "/usr/bin/be3600-bea-check.lua" \
+              -e "/usr/bin/be3600-widgetd" \
               -e "/usr/sbin/be3600-anim" \
+              -e "/usr/sbin/be3600-widget-action" \
               -e "/usr/sbin/be3600-uninstall" \
               -e "/etc/init.d/be3600-screensaver" \
               -e "/etc/be3600-screen" \

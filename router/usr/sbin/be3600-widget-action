@@ -1,0 +1,40 @@
+#!/bin/sh
+#
+# be3600-widget-action -- things a touch on a screen page can do. Run by the player, never with anything a
+# user typed: the two words come from the player's own code.
+#
+#   be3600-widget-action guest toggle|on|off     switch the guest Wi-Fi network
+
+D="${BE3600_DATA:-/tmp/be3600-widgets}"
+
+guest_sections() { uci -q show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)\.guest='1'.*/\1/p"; }
+
+guest() {
+    SECS="$(guest_sections)"
+    [ -n "$SECS" ] || { echo "no guest Wi-Fi network is set up" >&2; exit 1; }
+    ON=0
+    for S in $SECS; do
+        [ "$(uci -q get "wireless.$S.disabled")" = 1 ] || ON=1
+    done
+    case "$1" in
+        on) WANT=1 ;;
+        off) WANT=0 ;;
+        toggle) if [ "$ON" = 1 ]; then WANT=0; else WANT=1; fi ;;
+        *) echo "usage: be3600-widget-action guest toggle|on|off" >&2; exit 1 ;;
+    esac
+    for S in $SECS; do
+        if [ "$WANT" = 1 ]; then uci -q set "wireless.$S.disabled=0"; else uci -q set "wireless.$S.disabled=1"; fi
+    done
+    uci commit wireless
+    # show the new state at once; the helper confirms it on its next look
+    mkdir -p "$D"
+    SSID="$(uci -q get "wireless.$(echo "$SECS" | head -n 1).ssid")"
+    printf 'state=%s\nssid=%s\n' "$([ "$WANT" = 1 ] && echo on || echo off)" "$SSID" > "$D/guest.txt.tmp" && mv "$D/guest.txt.tmp" "$D/guest.txt"
+    # applying it re-reads the wireless settings for a few seconds
+    ( wifi reload >/dev/null 2>&1 & )
+}
+
+case "$1" in
+    guest) guest "$2" ;;
+    *) echo "usage: be3600-widget-action guest toggle|on|off" >&2; exit 1 ;;
+esac
