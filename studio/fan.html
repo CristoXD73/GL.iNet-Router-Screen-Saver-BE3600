@@ -186,11 +186,11 @@ var SPL_MAX = spl(RPM_MAX);
 /* ---------------------------------------------------------------- state */
 var PRESETS = [
   ["rev",     "60:800 255:700 60:600 255:700 60:600 255:1800", "idle, two blips, then hold it"],
-  ["spool",   "60:400 90:300 120:300 150:300 180:300 210:300 240:300 255:2000", "turbo winding up"],
-  ["slam",    "0:400 255:2200", "silence, then everything at once"],
-  ["brap",    "90:500 255:450 90:350 255:450 90:350 255:2000", "two stabs, then pull away"],
-  ["blowoff", "150:500 255:2000 0:450 255:900", "on the gas, cut, stab again"],
-  ["knock",   "255:380 0:430 255:380 0:430 255:380", "three knocks"]
+  ["up",      "60:600 255:600 60:450 255:1700", "a blip, then pull away"],
+  ["down",    "255:1500 150:500 100:500 60:700", "on the gas, then dying"],
+  ["alert",   "60:450 255:550 60:400 255:550 60:400 255:900", "three hard stabs"],
+  ["boot",    "60:500 100:350 140:350 180:350 220:350 255:1800", "spooling up"],
+  ["slam",    "0:400 255:2200", "from silence: hear how it blurs"]
 ];
 var steps = parse(PRESETS[0][1]), history = [];
 var P = { tauUp: 0.85, tauDn: 0.75, dead: 0.50, bright: 3000, res: 780, tone: 0.08, blades: 7, vol: 0.55 };
@@ -298,7 +298,8 @@ function render() {
   document.getElementById("cmd").textContent = 'be3600-fan play "' + text() + '"';
   var w = document.getElementById("warn");
   if (t > MAX_TOTAL_MS) w.textContent = "This holds the fan for " + (t / 1000).toFixed(1) + " s. be3600-fan will refuse anything over " + (MAX_TOTAL_MS / 1000) + " s.";
-  else if (steps.some(function (s) { return s[1] < 300; })) w.textContent = "Steps under about 300 ms never reach their speed, so they blur into the one before.";
+  else if (steps.some(function (s) { return s[1] < 350; })) w.textContent = "Steps under about 350 ms never reach their speed, so they blur into the one before.";
+  else if (steps.length > 1 && steps[0][0] === 0) w.textContent = "Starting from a standstill costs half a second before the rotor moves, and the first stab lands against silence. An idle floor around 60 makes it land.";
   else w.textContent = "";
   w.style.color = t > MAX_TOTAL_MS ? "#d0402f" : "";
 }

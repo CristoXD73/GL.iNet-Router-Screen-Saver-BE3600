@@ -159,7 +159,8 @@ animations are all "slots" in one carousel, so the drag-and-slide of the gesture
   `be3600-fan` writes short patterns to it and always restores the previous value, including from a signal handler;
   it refuses above 70 °C, so a chime can never come at the cost of cooling. Measured on the BE3600: duty 36 is
   1096 rpm and duty 255 is 5567 rpm, a speed change takes about 1.5 s to settle, and the tachometer only updates
-  every 600 ms. There is no audible blade-passing tone, so chimes are rhythm, not pitch.
+  every 600 ms. There is no audible blade-passing tone, so chimes are shaped like an engine being
+  revved -- an idle floor, stabs of throttle, a held note -- rather than as pitch or as bursts from silence.
 * **Housekeeping** runs once a second inside the player, whatever is on screen: timers ring, alerts are read from the
   helper's `events` file, night mode sets the backlight, the schedule and autoplay move between pages.
 * **Touch on a page:** a swipe moves; a single tap does the page's tap action if it has one (Pomodoro, stopwatch),

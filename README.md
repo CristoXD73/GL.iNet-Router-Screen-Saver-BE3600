@@ -283,20 +283,24 @@ spin. `be3600-fan` uses that as a doorbell.
 
 Be clear about what it is not. It is not a tune. A fan's blade-passing tone is completely buried
 in broadband rush on this router, so **there is no pitch to play with** -- pitched jingles were
-tried and they are indistinguishable from a draught of air. What is left is rhythm and loudness:
-bursts of air with silence between them, like knocking on a door. Nothing faster than about a
-third of a second per burst survives, because the fan needs that long to spin up or coast down.
+tried and they are indistinguishable from a draught of air.
+
+What does work is an engine. Every chime here is an idle at low speed, a stab of throttle, something
+held, and then letting it die. The idle is the trick: from a standstill the rotor wastes half a second
+breaking away and the stab lands against silence, which reads as one vague rush; from an idle floor it
+already has momentum, so the stab arrives in time and you hear it against a running engine. Nothing
+under about 400 ms is worth asking for.
 
 ```
-be3600-fan chimes            what it knows: ping, up, down, alert, ok, done, boot, siren
-be3600-anim chime alert      hear one
-be3600-fan play "255:400 0:450 255:700"      your own, as duty:milliseconds
+be3600-fan chimes            what it knows: ping, up, down, alert, ok, done, boot, rev, siren
+be3600-anim chime rev        hear one
+be3600-fan play "60:800 255:700 60:600 255:1800"     your own, as duty:milliseconds
 be3600-fan spin 60           hold a speed; "spin auto" hands it back
 ```
 
-Set `FAN_CHIME=1` and every banner is heard as well as seen: two rising bursts when something
-comes back, two falling when it goes away, three knocks for a warning. `FAN_CHIME_QUIET="22:00-08:00"`
-keeps it silent overnight.
+Set `FAN_CHIME=1` and every banner is heard as well as seen: a blip and a pull away when something
+comes back, a wind-down in stages when it goes, three hard stabs for a warning.
+`FAN_CHIME_QUIET="22:00-08:00"` keeps it silent overnight.
 
 Cooling always wins: nothing plays above 70 °C, the fan is put back exactly as it was found even
 if the command is killed, and no chime may hold it for longer than six seconds. Routers without

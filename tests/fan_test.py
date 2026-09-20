@@ -82,15 +82,21 @@ def main():
     print("== a chime is a series of speeds, and the fan is left as it was found")
     code, out, steps = trace(env, hw, "chime", "up", "--force")
     check(code == 0, "a chime plays", out)
-    check(steps[:3] == ["255", "0", "255"], "the 'up' chime is two bursts with a gap", str(steps))
+    check(steps[0] == "60" and steps[1] == "255", "a chime starts from an idle floor, then stabs", str(steps))
     check(steps[-1] == "0", "the old speed is put back at the end", str(steps))
     check(duty(hw) == "0", "and the file really holds it", duty(hw))
 
     code, out, steps = trace(env, hw, "chime", "alert", "--force")
-    check(steps.count("255") == 3, "'alert' knocks three times", str(steps))
+    check(steps.count("255") == 3, "'alert' stabs three times", str(steps))
+
+    code, out, steps = trace(env, hw, "chime", "down", "--force")
+    check(steps[0] == "255" and steps[1:4] == ["150", "100", "60"], "'down' dies away in stages", str(steps))
 
     code, out, steps = trace(env, hw, "chime", "boot", "--force")
-    check(steps[:3] == ["60", "110", "150"] and "255" in steps, "'boot' swells from quiet to full", str(steps))
+    check(steps[:3] == ["60", "100", "140"] and "255" in steps, "'boot' spools up to full", str(steps))
+
+    code, out, steps = trace(env, hw, "chime", "rev", "--force")
+    check(steps == ["60", "255", "60", "255", "60", "255", "0"], "'rev' is idle, two blips and a hold", str(steps))
 
     print("== a chime never comes before cooling")
     root2, hw2, hot = make_env(temp_mc=78000)
