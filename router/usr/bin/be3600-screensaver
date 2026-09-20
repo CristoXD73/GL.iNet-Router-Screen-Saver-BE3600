@@ -642,7 +642,17 @@ trap cleanup EXIT
 # MAIN LOOP
 # ------------------------------------------------------------
 
-start_stock
+# Normally the stock screen owns the display until the idle time is up. The exception is the
+# welcome handing over: it still has the screen, so painting the stock UI here would flash
+# GL.iNet's background for the few seconds before the player takes the framebuffer. Skip the
+# painting, but still make sure nothing else is left holding it.
+if [ -f "$SHOW_NOW" ]; then
+    log "keeping the screen (the welcome is handing it over)"
+    kill_custom
+    stop_widgetd
+else
+    start_stock
+fi
 
 TOUCH_NAME="$(/usr/bin/lua "$TOUCH" --which 2>/dev/null)"
 log "touchscreen: ${TOUCH_NAME:-unknown}"
