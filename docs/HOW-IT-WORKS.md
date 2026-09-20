@@ -154,6 +154,17 @@ animations are all "slots" in one carousel, so the drag-and-slide of the gesture
   adds up what grew since the last round. Traffic that never leaves the house is left out.
 * **The network doctor** times each stop on its own (the ISP gateway, the internet, a name lookup), so the first one
   that fails is the one to blame.
+* **The welcome** (`be3600-anim hello`, run at the end of an install) is `be3600-player --hello`: `native/hello.inc`
+  draws the logo's two eyes with a few keyframe tracks and no assets at all, so it needs no `.bea` and no config.
+  The CLI starts the `rev` chime in the background first, and both last 7.95 s, which is why the eyes widen exactly
+  when the fan stabs and blink in the cuts between them. It takes the screen the same way `preview` does, and then
+  leaves `/tmp/be3600-screen.show-now` so the supervisor skips its idle countdown: the welcome runs straight into
+  the screensaver rather than bouncing off the stock screen first.
+* **Why the rev sounds the way it does.** A rev cannot open with a punch. From a standstill the rotor needs half a
+  second to break away and another 1.6 s to approach full speed, so the first two seconds have to be the engine
+  starting; only then is there speed to cut away from. The pattern was searched against the measured model and then
+  checked against the fan: predicted troughs of 3400 and 2960 rpm came out at 3615 and 2974, and a predicted peak
+  of 5507 came out at 5596.
 * **Chimes** (`FAN_CHIME=1`) go out through the only moving part the router has. `/sys/class/hwmon/hwmon0/pwm1` is the
   cooling fan's duty cycle, 0 to 255, and writing it is exactly what the stock `gl_fan` daemon does above 75 °C.
   `be3600-fan` writes short patterns to it and always restores the previous value, including from a signal handler;

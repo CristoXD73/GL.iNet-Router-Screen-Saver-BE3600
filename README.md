@@ -302,6 +302,16 @@ Set `FAN_CHIME=1` and every banner is heard as well as seen: a blip and a pull a
 comes back, a wind-down in stages when it goes, three hard stabs for a warning.
 `FAN_CHIME_QUIET="22:00-08:00"` keeps it silent overnight.
 
+The installer finishes with `be3600-anim hello`, which is the two eyes from Motion Studio's logo
+waking up on the strip, looking around and blinking, while the fan revs underneath them -- the eyes
+widen on each stab of throttle and open out on the long pull. Run it yourself any time:
+
+```
+be3600-anim hello
+```
+
+It needs no animation and no settings; a router with no fan just gets the eyes.
+
 Cooling always wins: nothing plays above 70 °C, the fan is put back exactly as it was found even
 if the command is killed, and no chime may hold it for longer than six seconds. Routers without
 a controllable fan simply say so.

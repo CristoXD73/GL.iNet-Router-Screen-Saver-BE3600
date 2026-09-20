@@ -467,6 +467,7 @@ static void slide_between(const uint8_t *other, int from, int to, unsigned ms)
 #include "qr.inc"
 #include "pages3.inc"
 #include "pages4.inc"
+#include "hello.inc"
 
 /* Settings: plain KEY=value lines of the config file (the same file the supervisor reads). */
 static const char *cfg_file = "/etc/be3600-screen/config";
@@ -1392,6 +1393,7 @@ int main(int argc, char **argv)
 {
     const char *path = "/etc/be3600-screen/active.bea";
     const char *touch_arg = NULL, *render = NULL;
+    int hello_ms = 0;
     char touch_dev[128], v[600];
     unsigned fade_ms = 0;
     int ai, gestures = 0, code = 0, pages_from_arg = 0;
@@ -1415,7 +1417,7 @@ int main(int argc, char **argv)
 
     for (ai = 1; ai < argc; ai++) {
         if (strcmp(argv[ai], "--version") == 0) {
-            puts("be3600-player 4 (BEA1, BEA2, --fade, --gestures, pages)");
+            puts("be3600-player 5 (BEA1, BEA2, --fade, --gestures, pages, --hello)");
             return 0;
         } else if (strcmp(argv[ai], "--fade") == 0 && ai + 1 < argc) {
             long n = atol(argv[ai + 1]);
@@ -1437,6 +1439,9 @@ int main(int argc, char **argv)
             cfg_file = argv[++ai];
         } else if (strcmp(argv[ai], "--render") == 0 && ai + 1 < argc) {
             render = argv[++ai];
+        } else if (strcmp(argv[ai], "--hello") == 0) {
+            hello_ms = (ai + 1 < argc && argv[ai + 1][0] != '-') ? (int)atol(argv[++ai]) : HELLO_MS;
+            if (hello_ms <= 0) hello_ms = HELLO_MS;
         } else if (strcmp(argv[ai], "--slide") == 0 && ai + 1 < argc) {
             long n = atol(argv[++ai]);
             slide_ms = (n >= 0 && n <= 3000) ? (int)n : 280;
@@ -1497,7 +1502,7 @@ int main(int argc, char **argv)
     mkdir(ddir, 0755);
     slots_init();
 
-    if (!render && anim_load(path, &cur) != 0) {
+    if (!render && !hello_ms && anim_load(path, &cur) != 0) {
         if (!has_widget_slots()) return 1;       /* widgets only: an unusable animation is fine */
         memset(&cur, 0, sizeof cur);
     }
@@ -1533,6 +1538,11 @@ int main(int argc, char **argv)
             usage_day_rx = 1.4e9; usage_day_tx = 2.2e8; usage_mon_rx = 3.8e10; usage_mon_tx = 4.1e9; usage_ready = 1;
         }
         show_widget_now();
+        return 0;
+    }
+
+    if (hello_ms) {                              /* the welcome, once, then out of the way */
+        run_hello(hello_ms);
         return 0;
     }
 

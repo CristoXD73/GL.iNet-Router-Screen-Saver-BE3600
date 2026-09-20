@@ -24,6 +24,7 @@
 #   be3600-anim alert "text" [info|good|warn|bad]
 #                             show a banner on the screen now
 #   be3600-anim chime [NAME]  play a chime on the cooling fan (no NAME lists them)
+#   be3600-anim hello         the welcome: the eyes wake up while the fan revs
 
 SVC="/etc/init.d/be3600-screensaver"
 BEA="/etc/be3600-screen/active.bea"
@@ -443,6 +444,34 @@ pages_cmd() {
     esac
 }
 
+# The welcome: the two eyes wake up on the screen while the cooling fan revs. Both last the same
+# five seconds, and afterwards everything is put back exactly as it was found.
+hello_cmd() {
+    [ -x /usr/bin/be3600-player ] || { echo "the welcome needs the native player (this router is using the Lua one)."; return 1; }
+    /usr/bin/be3600-player --version 2>/dev/null | grep -q -- --hello || { echo "the installed player is too old for the welcome."; return 1; }
+
+    WAS_RUNNING=0
+    if running; then WAS_RUNNING=1; "$SVC" stop; fi
+    W=0
+    while [ -d "$LOCKDIR" ] && [ "$W" -lt 20 ]; do /bin/usleep 250000; W=$((W + 1)); done
+    /etc/init.d/gl_screen stop >/dev/null 2>&1 || true
+    /bin/usleep 300000
+    echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
+
+    [ -x "$FAN" ] && "$FAN" chime rev --force >/dev/null 2>&1 &
+    /usr/bin/be3600-player --hello >/dev/null 2>&1
+    wait 2>/dev/null
+
+    # Hand straight over to the screensaver rather than bouncing off the stock screen for the
+    # idle countdown; if it was not running, the stock screen is what was there to put back.
+    if [ "$WAS_RUNNING" -eq 1 ]; then
+        : > /tmp/be3600-screen.show-now
+        "$SVC" start >/dev/null 2>&1
+    else
+        /etc/init.d/gl_screen restart >/dev/null 2>&1 || true
+    fi
+}
+
 say_cmd() {
     if [ "$1" = "--clear" ]; then rm -f "$MSG"; echo "message cleared."; return 0; fi
     TEXT="$1"
@@ -605,6 +634,10 @@ alert)
 
 chime)
     chime_cmd "$2"
+    ;;
+
+hello)
+    hello_cmd
     ;;
 
 *)

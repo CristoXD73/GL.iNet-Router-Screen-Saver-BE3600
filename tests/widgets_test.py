@@ -161,6 +161,33 @@ def main():
     b, _ = render(root, "talkers")
     check(a != b, "the in-use board changes when nothing is talking")
 
+    print("== the welcome the router gives itself once it is installed")
+
+    def hello(at_ms):
+        fb = tempfile.mktemp(prefix="be3600-fb-")
+        env = dict(os.environ, BE3600_TESTING="1", BE3600_ROOT=root, BE3600_NOW=str(NOW), BE3600_FB=fb)
+        env.pop("TZ", None)
+        r = subprocess.run([PLAYER, "--hello", str(at_ms * 2)], env=env, capture_output=True, timeout=20)
+        if r.returncode != 0:
+            return None
+        with open(fb, "rb") as f:
+            d = f.read()
+        os.unlink(fb)
+        return d
+
+    # 2380 and 3820 are the cuts in the rev, where the eyes blink; 2900 and 4300 are the stabs
+    shut, wide, blink, ready = hello(150), hello(2900), hello(2380), hello(7800)
+    check(all(x is not None and len(x) == FRAME for x in (shut, wide, blink, ready)),
+          "it draws a full frame, and needs no animation to do it")
+    check(len({shut, wide, blink, ready}) == 4, "the eyes open, look about, blink and settle")
+    check(hello(2900) != hello(4300), "the two stabs of the rev do not look the same")
+    if wide and blink:
+        check(sum(wide) > sum(blink), "a blink really does put less on the screen than open eyes")
+    if ready:
+        im = to_image(ready)
+        lit = sum(1 for x in range(150, ROWS) for y in range(COLS) if sum(im.getpixel((x, y))) > 90)
+        check(lit > 150, "and at the end it says it is ready, beside the eyes", str(lit))
+
     print("== the Wi-Fi QR code")
     zbar = shutil.which("zbarimg")
     if not zbar:

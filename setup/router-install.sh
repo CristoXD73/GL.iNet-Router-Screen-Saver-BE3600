@@ -135,6 +135,10 @@ echo "[4/4] Starting"
 if [ -f "$BEA" ] && lua /usr/bin/be3600-bea-check.lua "$BEA" >/dev/null 2>&1; then
     /usr/sbin/be3600-anim on >/dev/null
     echo "  screensaver is ON: it starts at boot and appears after the idle time."
+    # Say hello on the router itself: the eyes wake up on the strip while the fan revs.
+    # Anything that goes wrong here is cosmetic, so it never fails the install.
+    echo "  saying hello on the screen..."
+    /usr/sbin/be3600-anim hello >/dev/null 2>&1 || true
 else
     echo "  installed but NOT started: there is no valid animation yet."
     echo "  Give it one with Set-Animation (drag a .bea onto it) or: be3600-anim set FILE.bea"

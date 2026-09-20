@@ -96,7 +96,8 @@ def main():
     check(steps[:3] == ["60", "100", "140"] and "255" in steps, "'boot' spools up to full", str(steps))
 
     code, out, steps = trace(env, hw, "chime", "rev", "--force")
-    check(steps == ["60", "255", "60", "255", "60", "255", "0"], "'rev' is idle, two blips and a hold", str(steps))
+    check(steps == ["255", "60", "255", "36", "255", "90", "255", "0"],
+          "'rev' starts the engine, cuts and stabs twice, then pulls away", str(steps))
 
     print("== a chime never comes before cooling")
     root2, hw2, hot = make_env(temp_mc=78000)

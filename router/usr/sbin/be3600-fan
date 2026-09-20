@@ -81,7 +81,11 @@ chime_steps() {
         ok)         echo "60:500 255:1800" ;;                                         # one long pull
         done)       echo "60:600 255:600 60:450 255:600 60:450 255:1900" ;;           # rev twice, then away
         boot)       echo "60:500 100:350 140:350 180:350 220:350 255:1800" ;;         # spooling up
-        rev)        echo "60:800 255:700 60:600 255:700 60:600 255:1800" ;;           # idle, two blips, hold it
+        # A rev cannot open with a punch: from a standstill the rotor needs half a second to break
+        # away and another 1.6 s to get near full, so the first two seconds are the engine starting,
+        # and only then is there something to stab at. Two deep cuts with a hard stab back out of
+        # each, a short catch of breath, then the long pull away.
+        rev)        echo "255:2200 60:550 255:900 36:500 255:1000 90:200 255:2600" ;;
         siren)      echo "90:500 255:600 90:500 255:600 90:500 255:600 90:600" ;;     # in and out, never silent
         *)
             # anything else is one of your own, saved from Fan Studio into chimes.d

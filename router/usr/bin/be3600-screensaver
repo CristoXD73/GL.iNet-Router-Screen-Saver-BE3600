@@ -31,6 +31,7 @@ SWIPE_INVERT=0                  # 1 = swap which swipe direction goes to the nex
 TOUCH_LONG_AXIS=Y               # which touchscreen axis runs along the strip (X or Y)
 SWITCH_FADE_MS=250              # crossfade time of a tap switch when the helper-based scheme is in use
 LOCKDIR="/tmp/be3600-screen.lock"
+SHOW_NOW="/tmp/be3600-screen.show-now"   # be3600-anim hello leaves this so the welcome runs straight into the screensaver
 PLAYER="/usr/bin/be3600-player.lua"
 NATIVE="/usr/bin/be3600-player"
 PLAYER_ENGINE="auto"     # auto = the native player if installed, else Lua; "lua" forces Lua
@@ -661,7 +662,14 @@ while :; do
     fi
     WARNED=0
 
-    wait_for_idle
+    # The welcome has just had the screen and handed it straight here; going back to the stock
+    # screen for the idle countdown first would undo the moment.
+    if [ -f "$SHOW_NOW" ]; then
+        rm -f "$SHOW_NOW"
+        log "showing at once (the welcome asked for it)"
+    else
+        wait_for_idle
+    fi
 
     if start_custom; then
 
