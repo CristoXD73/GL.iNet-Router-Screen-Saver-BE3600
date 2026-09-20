@@ -8,3 +8,5 @@
 id_*
 *_key
 *.pub
+
+__pycache__/

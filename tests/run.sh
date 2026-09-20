@@ -204,7 +204,15 @@ print('%02x%02x' % (d[1], d[0]))
             001f|f800) fail "mid-fade, the screen is still one endpoint ($MID), not a blend" ;;
             *) pass "mid-fade the screen is a blend, neither endpoint ($MID)" ;;
         esac
-    else
+
+        # Touch handling inside the player (tap, double-tap, drag and swipe, sliding between
+        # animations) against a fake touchscreen, checked pixel for pixel.
+        if python3 tests/gestures_test.py "$TMP/player-native" > "$TMP/gest.log" 2>&1; then
+            pass "touch gestures: $(tail -n 1 "$TMP/gest.log")"
+        else
+            fail "touch gesture tests failed"
+            grep FAIL "$TMP/gest.log"
+        fi    else
         fail "native player does not compile cleanly: $(cat "$TMP/cc.log")"
     fi
 else

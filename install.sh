@@ -142,7 +142,7 @@ echo
 if [ "$RC" -eq 0 ]; then
     mkdir -p "$STATE_DIR" && printf '%s\n' "$ROUTER" > "$STATE_FILE"
     printf '  %sAll set - the screensaver is installed and running.%s\n' "$GR" "$RS"
-    printf '  It starts on its own after a few idle seconds. Tap = next animation, double-tap = dismiss.\n'
+    printf '  It starts on its own after a few idle seconds. Swipe or swipe or tap = next animation, double-tap = dismiss.\n'
     printf '  Change the animation:  ./set-animation.sh   (then drag a .bea into the window)\n'
     printf '  Turn it off / remove:  be3600-anim off   /   be3600-uninstall   (over SSH)\n\n'
 elif [ "$RC" -eq 255 ]; then

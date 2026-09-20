@@ -99,7 +99,7 @@ while ($true) {
             ('  {0}' -f $name),
             ('  {0:N1} seconds per loop, shows after a few idle seconds' -f $info.Seconds),
             '',
-            'Tap for the next animation, double-tap to dismiss it.'
+            'Swipe or tap for the next animation, double-tap to dismiss it.'
         ) 'Green'
     }
     elseif ($code -eq 255) {

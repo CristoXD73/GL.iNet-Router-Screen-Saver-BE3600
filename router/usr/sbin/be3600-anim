@@ -329,7 +329,7 @@ on)
     lua "$CHECK" "$BEA" || exit 1
     "$SVC" enable
     if running; then "$SVC" restart; else "$SVC" start; fi
-    echo "screensaver ON: starts at boot; appears after the idle time; tap = next animation, double-tap = dismiss."
+    echo "screensaver ON: starts at boot; appears after the idle time; swipe or tap = next animation, double-tap = dismiss."
     ;;
 
 off)

@@ -8,8 +8,14 @@
 #   CUSTOM  be3600-player.lua, writing frames straight to /dev/fb0
 #
 #   STOCK --(IDLE_SECONDS with no touch)--> CUSTOM
-#   CUSTOM --(a single tap)--> next saved animation (stays CUSTOM)
-#   CUSTOM --(a second tap within DOUBLE_TAP_WINDOW_SECONDS)--> STOCK
+#   CUSTOM --(swipe along the strip, or a single tap)--> slides to the next / previous
+#                                                         saved animation (stays CUSTOM)
+#   CUSTOM --(double-tap, or a swipe across the strip)--> STOCK
+#
+# With the native player all touch handling happens inside that one player process (it
+# follows the finger, slides between animations, and exits with code 10 when the user
+# dismisses it). The Lua player, or a native player that cannot open the touchscreen,
+# uses the older scheme: small helper programs watch for touches and this script decides.
 #
 # Settings live in /etc/be3600-screen/config (shell syntax).
 
@@ -18,9 +24,12 @@ ANIMATION="/etc/be3600-screen/active.bea"
 LIB="/etc/be3600-screen/animations"
 IDLE_SECONDS=10
 TOUCH_DEVICE=""          # empty = find the touchscreen automatically
-DOUBLE_TAP_WINDOW_SECONDS=0.4   # a second tap within this long is a double-tap (exit);
+DOUBLE_TAP_WINDOW_SECONDS=0.3   # a second tap within this long is a double-tap (exit);
                                  # a lone tap switches to the next saved animation instead
-SWITCH_FADE_MS=250              # how long a tap-triggered switch crossfades (native player only)
+SLIDE_MS=280                    # how long a slide between animations takes (native player)
+SWIPE_INVERT=0                  # 1 = swap which swipe direction goes to the next animation
+TOUCH_LONG_AXIS=Y               # which touchscreen axis runs along the strip (X or Y)
+SWITCH_FADE_MS=250              # crossfade time of a tap switch when the helper-based scheme is in use
 LOCKDIR="/tmp/be3600-screen.lock"
 PLAYER="/usr/bin/be3600-player.lua"
 NATIVE="/usr/bin/be3600-player"
@@ -31,6 +40,10 @@ TOUCH="/usr/bin/be3600-wait-touch.lua"
 [ -r "$CONF" ] && . "$CONF"
 export TOUCH_DEVICE
 
+case "$SLIDE_MS" in ''|*[!0-9]*) SLIDE_MS=280 ;; esac
+
+GESTURES=1               # the native player handles the touchscreen itself (set to 0 if it cannot)
+ENGINE=""
 PLAYER_PID=""
 CLEANED=0
 WARNED=0
@@ -256,6 +269,15 @@ start_stock() {
 }
 
 
+# DOUBLE_TAP_WINDOW_SECONDS (may have a decimal point) in whole milliseconds, for the player.
+double_tap_ms() {
+    case "$DOUBLE_TAP_WINDOW_SECONDS" in
+        ''|*[!0-9.]*|*.*.*) echo 300; return ;;
+    esac
+    awk -v s="$DOUBLE_TAP_WINDOW_SECONDS" 'BEGIN { printf "%d\n", s * 1000 }'
+}
+
+
 start_custom() {
 
     # $1 (optional): milliseconds to crossfade in over, native player only.
@@ -274,7 +296,12 @@ start_custom() {
     # the config forces Lua.
     if [ "$PLAYER_ENGINE" != "lua" ] && [ -x "$NATIVE" ]; then
         ENGINE="native"
-        if [ -n "$FADE_MS" ]; then
+        if [ "$GESTURES" = 1 ]; then
+            set -- --gestures --lib "$LIB" --slide "$SLIDE_MS" --double-tap "$(double_tap_ms)"
+            [ "$SWIPE_INVERT" = 1 ] && set -- "$@" --swipe-invert
+            case "$TOUCH_LONG_AXIS" in X|x|Y|y) set -- "$@" --long-axis "$TOUCH_LONG_AXIS" ;; esac
+            "$NATIVE" "$@" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
+        elif [ -n "$FADE_MS" ]; then
             "$NATIVE" --fade "$FADE_MS" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
         else
             "$NATIVE" "$ANIMATION" >/tmp/be3600-player.log 2>&1 &
@@ -429,7 +456,58 @@ second_tap_follows() {
     wait $!
 }
 
+# The native player does all the touch handling itself; this only waits for it.
+run_native() {
+
+    RESTARTS=0
+
+    while :; do
+
+        POLLS=0
+        while alive "$PLAYER_PID"; do
+            POLLS=$((POLLS + 1))
+            [ $((POLLS % 10)) -eq 0 ] && refresh_lock
+            /bin/usleep 100000
+        done
+
+        wait "$PLAYER_PID" 2>/dev/null
+        RC=$?
+        PLAYER_PID=""
+
+        case "$RC" in
+            10)
+                log "dismissed by touch: leaving the animation"
+                return 0
+                ;;
+            11)
+                log "the player could not use the touchscreen; using the helper programs instead"
+                GESTURES=0
+                start_custom || return 1
+                run_animation
+                return $?
+                ;;
+        esac
+
+        RESTARTS=$((RESTARTS+1))
+
+        log "player exited RC=$RC (see /tmp/be3600-player.log), restart $RESTARTS/3"
+
+        if [ "$RESTARTS" -gt 3 ]; then
+            log "player keeps dying; giving up, returning to stock"
+            return 1
+        fi
+
+        start_custom || return 1
+    done
+}
+
+
 run_animation() {
+
+    if [ "$ENGINE" = "native" ] && [ "$GESTURES" = 1 ]; then
+        run_native
+        return $?
+    fi
 
     RESTARTS=0
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <!-- This page loads nothing from anywhere else and may only talk to Studio Link on this computer. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src blob:; connect-src http://127.0.0.1:8791 data: blob:; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: https://upload.wikimedia.org https://*.giphy.com; media-src blob:; connect-src http://127.0.0.1:8791 data: blob: https://api.openverse.org https://upload.wikimedia.org https://api.giphy.com https://*.giphy.com; base-uri 'none'; form-action 'none'">
   <title>BE3600 Motion Studio v5</title>
   <style>
 
@@ -83,6 +83,24 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
 .gif-empty svg{width:34px;height:34px}
 .gif-empty:hover,.gif-empty:focus-visible,.preview.dragging-gif .gif-empty{background:rgba(5,6,8,.6);outline:2px dashed rgba(255,255,255,.7);outline-offset:-10px}
 #gifDock .effect-list button{min-width:44px}
+.gs{position:fixed;left:14px;right:14px;top:78px;bottom:96px;z-index:30;display:flex;flex-direction:column;gap:9px;padding:14px;border-radius:22px;background:rgba(250,251,253,.95);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:var(--shadow),inset 0 0 0 1px var(--line);max-width:880px;margin:0 auto}
+.gs.hidden{display:none}
+.gs-bar,.gs-opts{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.gs input,.gs select{height:34px;border:0;border-radius:11px;padding:0 12px;background:#fff;box-shadow:inset 0 0 0 1px var(--line);font-size:12px;color:var(--text);min-width:0}
+.gs-bar input{flex:1}
+.gs button{height:34px;border:0;border-radius:11px;padding:0 14px;font-size:11px;font-weight:750;cursor:pointer;background:#fff;color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.gs button.go{background:#111318;color:#fff;box-shadow:none}
+.gs button:disabled{opacity:.5;cursor:progress}
+.gs-mode{display:flex;gap:3px;padding:3px;border-radius:13px;background:rgba(255,255,255,.7);box-shadow:inset 0 0 0 1px var(--line)}
+.gs .gs-mode button{height:28px;box-shadow:none;background:transparent;color:var(--muted)}
+.gs .gs-mode button.active{background:#111318;color:#fff}
+.gs-note{font-size:10px;color:var(--muted);line-height:1.4;min-height:14px}
+.gs-note a{color:inherit}
+.gs-grid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));grid-auto-rows:96px;gap:8px;align-content:start;padding:2px}
+.gs .gs-item{position:relative;height:100%;padding:0;border-radius:12px;overflow:hidden;background:#111318}
+.gs-item img{width:100%;height:100%;object-fit:cover;display:block}
+.gs-item span{position:absolute;left:0;right:0;bottom:0;padding:10px 7px 4px;font-size:9px;font-weight:700;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.72));text-align:left}
+.gs-item:focus-visible,.gs button:focus-visible{outline:2px solid #111318;outline-offset:2px}
 
 /* --- Your three slots, and getting Studio Link --- */
 .slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:10px}
@@ -147,7 +165,7 @@ a.soft-btn{display:inline-flex;align-items:center;text-decoration:none;color:inh
                     <canvas id="gifHost" class="gif-host hidden" width="284" height="76" aria-label="GIF preview"></canvas>
           <div id="gifEmpty" class="gif-empty hidden" role="button" tabindex="0" aria-label="Choose a GIF">
             <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M17 6v22M6 17h22"/></svg>
-            <span>Drop a GIF here, or click to choose one</span>
+            <span>Drop a GIF here, click to choose one, or use Search GIFs</span>
           </div>
 
           <div class="screen-vignette"></div>
@@ -260,6 +278,7 @@ a.soft-btn{display:inline-flex;align-items:center;text-decoration:none;color:inh
           <div class="colors">
             <input id="gifBg" type="color" value="#000000">
             <button id="gifChoose" type="button">Choose GIF</button>
+            <button id="gifSearchBtn" type="button">Search GIFs</button>
           </div>
         </div>
         <input id="gifPicker" type="file" accept="image/gif,.gif" hidden>
@@ -2101,6 +2120,27 @@ console.log(
   checkLink();
 })();
 </script>
+<div id="gifSearch" class="gs hidden" role="dialog" aria-label="Search for a GIF">
+  <div class="gs-bar">
+    <input id="gsQuery" type="search" placeholder="Search GIFs: eyes, fire, stars, waves..." autocomplete="off" maxlength="80" aria-label="Search words">
+    <button id="gsGo" class="go" type="button">Search</button>
+    <button id="gsClose" type="button" aria-label="Close search">Close</button>
+  </div>
+  <div class="gs-opts">
+    <div class="gs-mode" role="group" aria-label="Which GIFs to show">
+      <button type="button" data-gs-mode="classic" class="active" title="Only GIFs that fit the strip: about 3.7 to 1 and at least 284 pixels wide">Classic</button>
+      <button type="button" data-gs-mode="risky" title="Any GIF at all; it is cropped, padded or squashed to fit">Risky</button>
+    </div>
+    <select id="gsSource" aria-label="Where to search">
+      <option value="commons">Free: Wikimedia Commons</option>
+      <option value="giphy">Giphy (with your own free key)</option>
+    </select>
+    <input id="gsKey" class="hidden" type="text" placeholder="Paste your Giphy key" autocomplete="off" spellcheck="false" maxlength="64" aria-label="Giphy key">
+  </div>
+  <div id="gsNote" class="gs-note" role="status" aria-live="polite"></div>
+  <div id="gsGrid" class="gs-grid"></div>
+  <div><button id="gsMore" type="button" class="hidden">Show more</button></div>
+</div>
 <script>
 /* GIF tab: bring in a GIF and the compiler fits it to the 284 x 76 strip.
  * Everything runs in your browser; the GIF is never uploaded. */
@@ -2364,6 +2404,175 @@ console.log(
     if (isGif(e)) load(e.dataTransfer.files[0]); else say('That is not a GIF', 'Drop a .gif file here.');
   });
 
+  // ---- Search for a GIF ----
+  // Free: Wikimedia Commons, through Openverse (no key). Or Giphy, with a free key of your own.
+  // Only the words you type are sent (to Openverse or Giphy); nothing else leaves this page, and GIFs
+  // are only ever downloaded from those services' own addresses.
+  var gsBox = $('gifSearch'), gsGrid = $('gsGrid'), gsNote = $('gsNote'), gsQuery = $('gsQuery'), gsMore = $('gsMore'), gsKey = $('gsKey'), gsSource = $('gsSource'), gsGo = $('gsGo');
+  var gs = { mode: 'classic', q: '', page: 0, busy: false, done: true, seen: {}, run: 0 };
+  var STRIP_RATIO = 284 / 76;                       // the strip is 284 x 76, about 3.7 to 1
+  var GS_HOSTS = ['upload.wikimedia.org', 'api.openverse.org', 'giphy.com'];
+  function keep(k, v) {                              // localStorage can be blocked; the panel works without it
+    try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { /* not saved */ }
+    return null;
+  }
+  function gsOk(u) {
+    try {
+      var x = new URL(u);
+      return x.protocol === 'https:' && GS_HOSTS.some(function (h) { return x.hostname === h || x.hostname.slice(-(h.length + 1)) === '.' + h; });
+    } catch (e) { return false; }
+  }
+  // Classic keeps only what fits the strip without cropping much or blowing up; Risky keeps everything.
+  function gsFits(w, h) { return w >= 284 && h > 0 && w / h >= STRIP_RATIO * 0.78 && w / h <= STRIP_RATIO * 1.22; }
+  function gsSay(html) { gsNote.textContent = ''; if (typeof html === 'string') gsNote.textContent = html; else if (html) gsNote.appendChild(html); }
+  function gsSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+
+  // Wikimedia makes small copies of its files on request (the search service's own thumbnails fail for animated GIFs).
+  function wikiThumb(u) {
+    var m = /^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/([0-9a-f])\/([0-9a-f]{2})\/([^\/?#]+)$/.exec(String(u));
+    return m ? 'https://upload.wikimedia.org/wikipedia/commons/thumb/' + m[1] + '/' + m[2] + '/' + m[3] + '/250px-' + m[3] : '';
+  }
+
+  // One page of results, as { items: [{ title, w, h, size, thumb, url }], done }.
+  function gsPage(q, page) {
+    var giphy = gsSource.value === 'giphy', url;
+    if (giphy) {
+      var key = (gsKey.value || '').trim();
+      if (!/^[A-Za-z0-9]{16,64}$/.test(key)) return Promise.reject(new Error('Paste your free Giphy key first (get one at developers.giphy.com, it takes a minute).'));
+      url = 'https://api.giphy.com/v1/gifs/search?api_key=' + encodeURIComponent(key) + '&q=' + encodeURIComponent(q) + '&limit=50&offset=' + (page * 50) + '&rating=pg&lang=en';
+    } else {
+      url = 'https://api.openverse.org/v1/images/?q=' + encodeURIComponent(q) + '&extension=gif&source=wikimedia&mature=false&page_size=20&page=' + (page + 1) + (gs.mode === 'classic' ? '&aspect_ratio=wide' : '');
+    }
+    return fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' }).then(function (r) {
+      if (r.status === 401 || r.status === 403) throw new Error(giphy ? 'Giphy did not accept that key.' : 'The search service refused the request.');
+      if (r.status === 429) throw new Error('The search service is busy. Wait a minute and try again.');
+      if (r.status === 400 || r.status === 404) return { items: [], done: true };   // past the last page
+      if (!r.ok) throw new Error('The search service answered with an error (' + r.status + ').');
+      return r.json();
+    }).then(function (j) {
+      if (j.items) return j;
+      var items = [];
+      if (giphy) {
+        (j.data || []).forEach(function (g) {
+          var o = g.images && g.images.original, s = g.images && (g.images.fixed_width_small || g.images.fixed_width);
+          if (o && s) items.push({ title: String(g.title || 'giphy'), w: +o.width, h: +o.height, size: +o.size || 0, thumb: s.url, url: o.url });
+        });
+        var pg = j.pagination || {};
+        return { items: items, done: !pg.total_count || (pg.offset || 0) + (pg.count || 0) >= pg.total_count || !(j.data || []).length };
+      }
+      (j.results || []).forEach(function (r) {
+        items.push({ title: String(r.title || 'gif'), w: +r.width, h: +r.height, size: +r.filesize || 0, thumb: wikiThumb(r.url) || r.url, url: r.url });
+      });
+      return { items: items, done: page + 1 >= (j.page_count || 0) || !(j.results || []).length };
+    });
+  }
+
+  function gsAdd(it) {
+    var b = document.createElement('button'), img = document.createElement('img'), cap = document.createElement('span');
+    b.type = 'button'; b.className = 'gs-item';
+    img.alt = it.title.slice(0, 80); img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.src = it.thumb;
+    img.addEventListener('error', function () {
+      // The small copy may not exist (the original is smaller than that): use the file itself if it is light.
+      if (img.src !== it.url && it.size && it.size <= 600 * 1024 && gsOk(it.url)) img.src = it.url; else img.style.visibility = 'hidden';
+    });
+    cap.textContent = it.w + ' x ' + it.h + (it.size ? '  ' + gsSize(it.size) : '');
+    b.title = it.title.slice(0, 120);
+    b.appendChild(img); b.appendChild(cap);
+    b.addEventListener('click', function () { gsPick(it); });
+    gsGrid.appendChild(b);
+  }
+
+  function gsSearch(fresh) {
+    var q = gsQuery.value.trim();
+    if (gs.busy) return;
+    if (!q) { gsSay('Type something to search for.'); return; }
+    if (fresh || q !== gs.q) { gs.q = q; gs.page = 0; gs.done = false; gs.seen = {}; gsGrid.textContent = ''; }
+    var run = ++gs.run, want = gs.mode === 'classic' ? 12 : 24, added = 0, tries = 0, classic = gs.mode === 'classic';
+    gs.busy = true; gsGo.disabled = true; gsMore.classList.add('hidden');
+    gsSay(classic ? 'Searching for GIFs that fit the strip...' : 'Searching...');
+    (function step() {
+      return gsPage(q, gs.page).then(function (r) {
+        gs.page++;
+        r.items.forEach(function (it) {
+          if (!gsOk(it.url) || !gsOk(it.thumb) || !(it.w > 0) || !(it.h > 0) || gs.seen[it.url]) return;
+          if (it.size > 40 * 1048576) return;                      // far too big to be worth downloading
+          if (classic && !gsFits(it.w, it.h)) return;
+          gs.seen[it.url] = 1; gsAdd(it); added++;
+        });
+        if (r.done) gs.done = true;
+        // Classic matches are rare, so keep looking through further pages until there are enough.
+        if (!gs.done && added < want && ++tries < (classic ? 12 : 4) && run === gs.run) return step();
+      });
+    })().then(function () {
+      gs.busy = false; gsGo.disabled = false;
+      if (!gsGrid.children.length) {
+        gsSay(classic ? 'No GIFs that fit the strip for "' + q + '". Try other words, or switch to Risky to see every GIF.' : 'Nothing found for "' + q + '".');
+      } else {
+        gsSay(classic ? 'Classic: these fit the strip. Click one to bring it in.' : 'Risky: any GIF. Fill crops it, Fit adds bars, Stretch squashes it. Click one to bring it in.');
+      }
+      gsMore.classList.toggle('hidden', gs.done);
+    }, function (e) {
+      gs.busy = false; gsGo.disabled = false;
+      gsSay(e && e.message && !/Failed to fetch|NetworkError|Load failed/i.test(e.message) ? e.message : 'Could not reach the search service. Check your internet connection.');
+      gsMore.classList.toggle('hidden', gs.done || !gsGrid.children.length);
+    });
+  }
+
+  function gsPick(it) {
+    if (gs.busy) return;
+    gs.busy = true;
+    gsSay('Downloading ' + it.w + ' x ' + it.h + ' GIF...');
+    fetch(it.url, { credentials: 'omit', referrerPolicy: 'no-referrer' }).then(function (r) {
+      if (!r.ok) throw new Error('The site answered with an error (' + r.status + ').');
+      var len = +r.headers.get('content-length') || 0;
+      if (len > 40 * 1048576) throw new Error('That GIF is ' + gsSize(len) + ', too big to bring in. Pick a smaller one.');
+      return r.blob();
+    }).then(function (blob) {
+      if (blob.size > 40 * 1048576) throw new Error('That GIF is too big to bring in. Pick a smaller one.');
+      var name = (it.title.replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'search') + '.gif';
+      gs.busy = false;
+      gsBox.classList.add('hidden');
+      load(new File([blob], name, { type: 'image/gif' }));
+    }).catch(function (e) {
+      gs.busy = false;
+      gsSay(e && e.message && !/Failed to fetch|NetworkError|Load failed/i.test(e.message) ? e.message : 'Could not download that one (its host may not allow it). Try another.');
+    });
+  }
+
+  function gsOpen() {
+    gsBox.classList.remove('hidden');
+    gsQuery.focus();
+    if (!gsGrid.children.length && !gs.busy) gsSay('Search for anything. Classic shows only GIFs that fit the strip; Risky shows every GIF.');
+  }
+  function gsClose() { gsBox.classList.add('hidden'); }
+  function gsSyncSource() {
+    var giphy = gsSource.value === 'giphy';
+    gsKey.classList.toggle('hidden', !giphy);
+    if (giphy) {
+      var saved = keep('be3600-giphy-key'); if (saved && !gsKey.value) gsKey.value = saved;
+      if (!gsKey.value) {
+        var a = document.createElement('a'); a.href = 'https://developers.giphy.com/'; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'developers.giphy.com';
+        var span = document.createElement('span'); span.appendChild(document.createTextNode('Giphy needs a free key of your own: create one at ')); span.appendChild(a); span.appendChild(document.createTextNode(', then paste it here. It stays in this browser.'));
+        gsSay(span);
+      }
+    }
+  }
+  $('gifSearchBtn').addEventListener('click', gsOpen);
+  $('gsClose').addEventListener('click', gsClose);
+  gsGo.addEventListener('click', function () { gsSearch(true); });
+  gsMore.addEventListener('click', function () { gsSearch(false); });
+  gsQuery.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); gsSearch(true); } });
+  gsSource.addEventListener('change', function () { gs.q = ''; gsGrid.textContent = ''; gsMore.classList.add('hidden'); gsSyncSource(); if (gsSource.value === 'commons') gsSay('Free: Wikimedia Commons. Search for something.'); });
+  gsKey.addEventListener('change', function () { keep('be3600-giphy-key', gsKey.value.trim()); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-gs-mode]'), function (b) {
+    b.addEventListener('click', function () {
+      gs.mode = b.getAttribute('data-gs-mode');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gs-mode]'), function (x) { x.classList.toggle('active', x === b); });
+      if (gs.q && !gs.busy) gsSearch(true);
+    });
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !gsBox.classList.contains('hidden')) gsClose(); });
+  document.addEventListener('be3600-engine', function (e) { if (e.detail !== 'gif') gsClose(); });
   // Switching tabs (the studio announces it).
   document.addEventListener('be3600-engine', function (e) {
     active = e.detail === 'gif';

@@ -7,16 +7,25 @@ ANIMATION="/etc/be3600-screen/active.bea"
 # Seconds without a touch before the animation starts (0 = immediately).
 IDLE_SECONDS=10
 
-# While an animation is showing: a single tap switches to the next saved
-# animation (see be3600-anim list). A second tap within this many seconds of
-# the first is a double-tap, and that is what leaves the animation and shows
-# the normal screen again. Fractions are fine. A shorter window makes a single
-# tap switch sooner but leaves less time for the second tap of a double-tap.
-DOUBLE_TAP_WINDOW_SECONDS=0.4
+# While an animation is showing (native player): drag a finger along the strip and the
+# picture follows it, then slides to the next or previous saved animation (see
+# be3600-anim list); a single tap goes to the next one; a double-tap, or a swipe across
+# the strip, leaves the animation and shows the normal screen again.
+# A second tap within this many seconds of the first is a double-tap. Fractions are
+# fine. A shorter window makes a single tap switch sooner but leaves less time for the
+# second tap of a double-tap.
+DOUBLE_TAP_WINDOW_SECONDS=0.3
 
-# How long (milliseconds) a tap-triggered switch crossfades from the old
-# animation into the new one; 0 cuts instantly. Native player only.
-SWITCH_FADE_MS=250
+# How long (milliseconds) a slide between animations takes.
+SLIDE_MS=280
+
+# If swiping goes the wrong way for you (the next animation should come in from the
+# right when you swipe left), set this to 1.
+SWIPE_INVERT=0
+
+# Which touchscreen axis runs along the strip: Y (the default) or X. Change it only if a swipe
+# along the strip is being taken for a swipe across it.
+TOUCH_LONG_AXIS=Y
 
 # Touchscreen device. Leave empty to find it automatically (the input device
 # whose name contains "touch"); set it only if autodetection picks the wrong one,

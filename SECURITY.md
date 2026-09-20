@@ -20,6 +20,12 @@ maintainer sees it, and a fix and credit (if you want it) once it's resolved.
   random passphrase that only your Windows account (DPAPI), macOS Keychain or Linux keyring can
   open. The key gives root access to the router; `Studio-Link.cmd -Forget` (or `--forget`)
   removes it from both places.
+* **GIF search** (Motion Studio's GIF tab) talks to only two services, and only when you press
+  Search: Wikimedia Commons through Openverse (no account), or Giphy if you paste a free key
+  of your own (kept in your browser only). They see the words you search for, as any web search
+  would. The page's Content-Security-Policy allows no other address, results are only used if
+  they point at those services' own hosts, and a downloaded GIF goes through the same size
+  limits as any GIF you choose yourself. Studio Link and its token are never involved.
 * **The downloads** (`studio/downloads/`) are published with `SHA256SUMS`, and the router
   program they carry (`router/usr/bin/be3600-player`) is built reproducibly:
   `sh native/build-reproducible.sh --check` proves it matches `native/be3600-player.c`.

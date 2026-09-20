@@ -60,8 +60,36 @@ The touch controller is a Hynitron CST816X exposed as `/dev/input/event0`.
 When a finger lands it emits `ABS_X`/`ABS_Y` and `ABS_MT_TRACKING_ID = 0`, and
 `ABS_MT_TRACKING_ID = -1` when it lifts. It does not send `BTN_TOUCH`.
 `be3600-wait-touch.lua` reads 24-byte `struct input_event` records and exits 0
-on the first finger-down. It reports only "a finger landed"; telling a single
-tap from a double-tap is done by the supervisor (below), which only needs that.
+on the first finger-down. It reports only "a finger landed". It is used while the
+normal screen is up (to time the idle wait) and as the fallback described below;
+while an animation plays, the native player reads the touchscreen itself.
+
+### Gestures (native player)
+
+While an animation plays, `be3600-player --gestures` reads `/dev/input/event0` in
+the same process that draws the frames, so no touch can fall in a gap between
+helper programs (which is what made the old double-tap unreliable) and switching
+never restarts anything.
+
+* **Drag along the strip:** the picture follows the finger and the next (or
+  previous) saved animation comes in behind it. Let go past a quarter of the
+  strip, or with a quick flick, and it slides the rest of the way; otherwise it
+  springs back. With only one saved animation it stretches a little and springs back.
+* **Tap:** after the double-tap window (0.3 s) with no second tap, slides to the next one.
+* **Double-tap, or a swipe across the strip:** the player exits with code 10 and the
+  supervisor gives the display back to the stock screen.
+* Thresholds follow common touch conventions (a small "touch slop" before a
+  touch counts as a drag, a time limit for a tap, speed for a flick).
+* The touchscreen's coordinates are taken to be the display's own pixels
+  (0..75 across, 0..283 along the strip), as the stock screen program does
+  (it swaps axes and calibrates the same way through LVGL's evdev driver). The kernel
+  reports a generic 0..240 range, so it is ignored. If a swipe goes the wrong way,
+  `SWIPE_INVERT=1`; if the axes are swapped, `TOUCH_LONG_AXIS=X`. What the player
+  saw is logged in `/tmp/be3600-player.log`.
+* Exit codes: 10 = dismissed, 11 = the touchscreen could not be opened (the
+  supervisor then falls back to the helper scheme below). The kernel drops a
+  coordinate that has not changed, so the player reads the device's current
+  position when it opens it.
 
 ### The buffering pitfall
 
@@ -87,23 +115,23 @@ Treat the mechanism as a hypothesis; the fix is what was verified.
 * **Idle detection** runs while stock owns the display: the helper is run
   under `timeout IDLE_SECONDS`. Exit 0 means a touch (timer restarts); a timeout
   exit means idle.
-* **While the animation runs**, the supervisor watches two processes: the touch
-  helper and the player. When the helper reports a touch, the supervisor starts
-  a second helper under `timeout DOUBLE_TAP_WINDOW_SECONDS`: if that reports
-  another touch, it is a **double-tap** and the supervisor returns to the stock
-  screen; if it times out, it was a lone tap, so the supervisor steps to the
-  next file in the library (`/etc/be3600-screen/animations/`, alphabetical,
-  wrapping around), copies it to `active.bea`, and restarts the player without
-  ever leaving the animation. With fewer than two saved animations a lone tap
-  changes nothing. If the player dies it is restarted, up to three times, and
-  then the supervisor gives up and returns to the stock screen rather than
-  leave a blank display.
-* **Why taps, not swipes:** the panel is only 76 pixels wide, and the touch
-  controller's coordinate range hasn't been calibrated here, so telling a swipe
-  from a tap would depend on guessed distances. Timing two touches needs only the
-  "did a finger land" signal that already works, and is easy to do on a strip
-  this small.
-* A process is checked for being alive by reading `/proc/PID/status`, not just
+* **While the animation runs** (native player), the supervisor only waits for the
+  player, and reads its exit code: 10 means the user dismissed it, so the stock
+  screen comes back; 11 means the touchscreen could not be opened, so it switches to
+  the fallback below; anything else is a crash, and the player is restarted up to
+  three times before the supervisor gives up and returns to the stock screen rather
+  than leave a blank display. The player also copies the animation it switched to over
+  `active.bea` (in a short-lived child process, so the flash write never delays a
+  touch), so a restart resumes with the one you were watching.
+* **The fallback (Lua player, or a touchscreen the native player cannot open):**
+  the supervisor watches the touch helper and the player. When the helper reports a
+  touch, it waits for the finger to lift and starts a second helper under
+  `timeout DOUBLE_TAP_WINDOW_SECONDS`: another touch is a **double-tap** (back to the
+  stock screen); a timeout was a lone tap, so it steps to the next file in the library
+  (`/etc/be3600-screen/animations/`, alphabetical, wrapping around), copies it to
+  `active.bea` and restarts the player. There are no swipes and no slide here, because
+  the helpers only know "a finger landed", and touches that arrive between two helper
+  starts are missed. That gap is why the native player handles touches itself.* A process is checked for being alive by reading `/proc/PID/status`, not just
   `kill -0`, because `kill -0` succeeds on a crashed background job that has
   not been reaped yet (a zombie), which would hide a dead player.
 * On `SIGTERM`/`SIGINT`/`SIGHUP` it restores the stock screen and exits.

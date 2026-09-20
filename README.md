@@ -19,8 +19,9 @@ Robot eyes, colour fields, your own text, or anything you design.
 ---
 
 After a few idle seconds, this plays an animation on your BE3600's front
-screen. Tap it once to flip to your next saved animation; double-tap to bring
-the normal GL.iNet screen back. One download sets it all up, and one command
+screen. Swipe along it and the picture follows your finger and slides to your next (or
+previous) saved animation; a tap does the same; double-tap, or swipe across the strip, to
+bring the normal GL.iNet screen back. One download sets it all up, and one command
 removes it — nothing about the router's firmware changes.
 
 ## Get started (two steps)
@@ -103,7 +104,7 @@ More help: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 </div>
 
 Motion Studio is a page in your browser: nothing to install, nothing uploaded.
-Pick **Atmosphere** (six slow colour scenes), **Robot Eyes** (a library of expressions) or **GIF** (bring your own; the compiler crops or fits it to the strip), shape it, then open **Compiler and optimizer** (**Create your
+Pick **Atmosphere** (six slow colour scenes), **Robot Eyes** (a library of expressions) or **GIF** (bring your own, or press **Search GIFs**: *Classic* shows only GIFs that fit the strip, *Risky* shows any GIF; the compiler crops or fits it to the strip), shape it, then open **Compiler and optimizer** (**Create your
 video**) and click **Compile BE3600 Pack**. It asks how long the loop should
 be (1-25 s).
 
@@ -213,8 +214,10 @@ Settings live in `/etc/be3600-screen/config` (`be3600-anim on` to apply):
 
 ```sh
 IDLE_SECONDS=10                 # seconds idle before the animation starts (0 = at once)
-DOUBLE_TAP_WINDOW_SECONDS=0.4   # a second tap this close is a double-tap; else it switches animation
-SWITCH_FADE_MS=250              # crossfade time when switching (native player only)
+DOUBLE_TAP_WINDOW_SECONDS=0.3   # a second tap this close is a double-tap; else it switches animation
+SLIDE_MS=280                    # how long a slide between animations takes
+SWIPE_INVERT=0                  # 1 = swipe the other way for next/previous
+TOUCH_LONG_AXIS=Y               # X or Y: which touch axis runs along the strip
 TOUCH_DEVICE=""                 # leave empty: found automatically
 PLAYER_ENGINE="auto"            # "auto" = fast native player when installed; "lua" forces the fallback
 ```
@@ -224,8 +227,11 @@ PLAYER_ENGINE="auto"            # "auto" = fast native player when installed; "l
 
 * **Only tested on a GL-BE3600**, firmware 4.8.3. The installer and the
   screensaver both refuse to touch a display that doesn't match.
-* **A tap waits ~0.4 s** to see if a second one follows — that's the
-  double-tap window, not lag.
+* **A tap waits ~0.3 s** to see if a second one follows — that's the
+  double-tap window, not lag. Swiping has no wait: it follows your finger straight away.
+* **Swipe going the wrong way?** Set SWIPE_INVERT=1 (or TOUCH_LONG_AXIS=X if swiping along
+  the strip dismisses it) in the config. What the touchscreen reports is logged in
+  /tmp/be3600-player.log on the router.
 * **Firmware upgrades:** untested for real, but the files are on OpenWrt's
   "keep settings" list, and the screensaver re-checks the display after any
   version change before taking it over. Missing something? Rerun the installer.
