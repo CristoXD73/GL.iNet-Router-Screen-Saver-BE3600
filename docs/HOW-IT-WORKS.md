@@ -149,6 +149,17 @@ animations are all "slots" in one carousel, so the drag-and-slide of the gesture
 * **Collected data** (ping history, Wi-Fi clients, VPN, guest network, QR details, weather, custom scripts) is written
   by `be3600-widgetd` to `/tmp/be3600-widgets` as small text files. The supervisor starts it while the screensaver is
   showing, only if `PAGES` lists a page that needs it.
+* **Who is using the internet** (`talkers`) needs no firewall rules: the kernel already counts the bytes of every
+  connection (`nf_conntrack_acct`), so the helper reads `/proc/net/nf_conntrack`, remembers each flow's counters and
+  adds up what grew since the last round. Traffic that never leaves the house is left out.
+* **The network doctor** times each stop on its own (the ISP gateway, the internet, a name lookup), so the first one
+  that fails is the one to blame.
+* **Chimes** (`FAN_CHIME=1`) go out through the only moving part the router has. `/sys/class/hwmon/hwmon0/pwm1` is the
+  cooling fan's duty cycle, 0 to 255, and writing it is exactly what the stock `gl_fan` daemon does above 75 °C.
+  `be3600-fan` writes short patterns to it and always restores the previous value, including from a signal handler;
+  it refuses above 70 °C, so a chime can never come at the cost of cooling. Measured on the BE3600: duty 36 is
+  1096 rpm and duty 255 is 5567 rpm, a speed change takes about 1.5 s to settle, and the tachometer only updates
+  every 600 ms. There is no audible blade-passing tone, so chimes are rhythm, not pitch.
 * **Housekeeping** runs once a second inside the player, whatever is on screen: timers ring, alerts are read from the
   helper's `events` file, night mode sets the backlight, the schedule and autoplay move between pages.
 * **Touch on a page:** a swipe moves; a single tap does the page's tap action if it has one (Pomodoro, stopwatch),

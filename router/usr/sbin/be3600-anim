@@ -23,6 +23,7 @@
 #                             put a message on the message page (say --clear removes it)
 #   be3600-anim alert "text" [info|good|warn|bad]
 #                             show a banner on the screen now
+#   be3600-anim chime [NAME]  play a chime on the cooling fan (no NAME lists them)
 
 SVC="/etc/init.d/be3600-screensaver"
 BEA="/etc/be3600-screen/active.bea"
@@ -32,6 +33,7 @@ LOCKDIR="/tmp/be3600-screen.lock"
 LIB="/etc/be3600-screen/animations"
 CONF="/etc/be3600-screen/config"
 MSG="/etc/be3600-screen/message"
+FAN="/usr/sbin/be3600-fan"
 DATA="/tmp/be3600-widgets"
 RESERVE_KB=20480          # always leave this much free on the router
 MAX_ANIMS=3               # the library holds at most this many animations
@@ -334,17 +336,21 @@ preview() {
 }
 
 # ---- pages: what the screen can show besides animations ---------------------
-PAGE_LIST="clock netspeed vitals info clients internet usage vpn health pomodoro stopwatch message guest wifiqr weather custom"
+PAGE_LIST="clock analog aurora netspeed talkers vitals info clients internet doctor usage vpn health pomodoro stopwatch message guest wifiqr weather custom"
 
 page_desc() {
     case "$1" in
         animations) echo "your saved animations" ;;
         clock) echo "big clock and date" ;;
+        analog) echo "an analog watch face with a sweeping second hand" ;;
+        aurora) echo "your traffic as drifting light (a screensaver that is also a meter)" ;;
         netspeed) echo "live download / upload speed graph" ;;
         vitals) echo "CPU, memory, storage and temperature" ;;
         info) echo "uptime, load, addresses, firmware" ;;
         clients) echo "Wi-Fi devices with signal strength" ;;
         internet) echo "internet up/down and latency graph" ;;
+        doctor) echo "where the trouble is: router, ISP link, internet, name lookups" ;;
+        talkers) echo "which device is using the internet right now" ;;
         usage) echo "data used today and this month (DATA_CAP_GB adds a cap bar)" ;;
         vpn) echo "WireGuard / OpenVPN tunnels" ;;
         health) echo "one glance: is everything fine?" ;;
@@ -459,6 +465,16 @@ alert_cmd() {
     mkdir -p "$DATA"
     echo "$(date +%s)|$L|$TEXT" >> "$DATA/events"
     echo "sent (it shows while the screensaver is on screen)."
+}
+
+chime_cmd() {
+    [ -x "$FAN" ] || { echo "be3600-fan is not installed."; exit 1; }
+    if [ -z "$1" ]; then
+        "$FAN" chimes
+        echo "the screen plays one with every banner when FAN_CHIME=1 in $CONF."
+        return 0
+    fi
+    "$FAN" chime "$1" --force
 }
 case "$1" in
 
@@ -585,6 +601,10 @@ say)
 
 alert)
     alert_cmd "$2" "$3"
+    ;;
+
+chime)
+    chime_cmd "$2"
     ;;
 
 *)

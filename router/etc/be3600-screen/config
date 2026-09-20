@@ -43,8 +43,10 @@ PLAYER_ENGINE="auto"
 #               be3600-anim pages set "animations clock netspeed vitals"
 #
 #   animations  your saved animations       clock      big clock and date
-#   netspeed    live speed graph            vitals     CPU, memory, storage, temperature
-#   info        uptime, addresses           clients    Wi-Fi devices and signal
+#   analog      an analog watch face        aurora     your traffic as drifting light
+#   netspeed    live speed graph            talkers    which device is using the internet
+#   vitals      CPU, memory, storage, temp  info       uptime, addresses
+#   clients     Wi-Fi devices and signal    doctor     where the trouble is (router/ISP/internet/names)
 #   internet    up/down and latency         usage      data used today / this month
 #   vpn         VPN tunnels                 health     one-glance "all fine?"
 #   pomodoro    focus timer (touch)         stopwatch  stopwatch (touch)
@@ -60,6 +62,15 @@ AUTOPLAY_SECONDS=0
 # Banners over whatever is showing: internet down/back, a device joined, VPN changes, a timer
 # finishing, the router getting hot, the data cap reached. 0 turns them off.
 ALERTS=1
+
+# Hear the banners as well as see them. The router has one moving part -- the cooling fan --
+# and a fan makes a tone at whatever speed it is spinning, so a short rise or fall in speed
+# is an audible chime. It is off by default; it is also skipped whenever the router is warm,
+# because cooling comes first. Try the chimes with:  be3600-fan chimes
+FAN_CHIME=0
+
+# ...but not during these hours. Empty means any time.
+FAN_CHIME_QUIET="22:00-08:00"
 
 # Night mode: between these times the screen dims to NIGHT_BRIGHTNESS (0 = dark, up to 11).
 # A touch wakes it for 20 seconds. Leave NIGHT_START empty to turn it off.
@@ -79,8 +90,11 @@ SPEED_UNITS="bits"
 # Data page: a monthly allowance in GB adds a bar and an alert when it is used up (0 = none).
 DATA_CAP_GB=0
 
-# Internet page: what to ping (an address). Replies are only timed; nothing else is sent.
+# Internet and doctor pages: what to ping (an address). Replies are only timed; nothing else is sent.
 PING_TARGET="1.1.1.1"
+
+# Doctor page: the name it looks up to check that name lookups work.
+DNS_PROBE="openwrt.org"
 
 # Pomodoro timer lengths in minutes.
 POMODORO_FOCUS_MIN=25

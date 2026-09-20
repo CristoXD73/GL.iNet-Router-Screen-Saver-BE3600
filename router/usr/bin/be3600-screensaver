@@ -208,7 +208,7 @@ verify_firmware() {
 needs_helper() {
     for PG in $PAGES; do
         case "$PG" in
-            animations|anim:*|clock|netspeed|vitals|info|usage|pomodoro|stopwatch|message) ;;
+            animations|anim:*|clock|analog|aurora|netspeed|vitals|info|usage|pomodoro|stopwatch|message) ;;
             *) return 0 ;;
         esac
     done

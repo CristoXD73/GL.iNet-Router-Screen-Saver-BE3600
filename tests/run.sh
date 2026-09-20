@@ -243,6 +243,13 @@ else
     grep FAIL "$TMP/wd.log"
 fi
 
+if python3 tests/fan_test.py > "$TMP/fan.log" 2>&1; then
+    pass "fan chimes: $(tail -n 1 "$TMP/fan.log")"
+else
+    fail "fan chime tests failed"
+    grep FAIL "$TMP/fan.log"
+fi
+
 
 echo "== the bundled animation =="
 gunzip -c animations/default.bea.gz > "$TMP/default.bea"

@@ -67,6 +67,7 @@ put 755 usr/bin/be3600-wait-touch.lua
 put 755 usr/bin/be3600-bea-check.lua
 put 755 usr/sbin/be3600-anim
 put 755 usr/sbin/be3600-widget-action
+put 755 usr/sbin/be3600-fan
 put 755 usr/bin/be3600-widgetd
 put 755 etc/init.d/be3600-screensaver
 
@@ -90,7 +91,7 @@ cp "$HERE/router-uninstall.sh" /usr/sbin/be3600-uninstall.new
 chmod 755 /usr/sbin/be3600-uninstall.new
 mv /usr/sbin/be3600-uninstall.new /usr/sbin/be3600-uninstall
 
-mkdir -p /etc/be3600-screen
+mkdir -p /etc/be3600-screen /etc/be3600-screen/chimes.d
 if [ -f /etc/be3600-screen/config ]; then
     echo "  kept your existing settings (/etc/be3600-screen/config)"
 else
@@ -106,7 +107,7 @@ fi
 
 # Keep everything across a "keep settings" firmware upgrade (standard OpenWrt list).
 touch /etc/sysupgrade.conf
-KEEP="/usr/bin/be3600-screensaver /usr/bin/be3600-player /usr/bin/be3600-player.lua /usr/bin/be3600-wait-touch.lua /usr/bin/be3600-bea-check.lua /usr/bin/be3600-widgetd /usr/sbin/be3600-anim /usr/sbin/be3600-widget-action /usr/sbin/be3600-uninstall /etc/init.d/be3600-screensaver /etc/be3600-screen /etc/rc.d/S99be3600-screensaver /etc/rc.d/K10be3600-screensaver"
+KEEP="/usr/bin/be3600-screensaver /usr/bin/be3600-player /usr/bin/be3600-player.lua /usr/bin/be3600-wait-touch.lua /usr/bin/be3600-bea-check.lua /usr/bin/be3600-widgetd /usr/sbin/be3600-anim /usr/sbin/be3600-widget-action /usr/sbin/be3600-fan /usr/sbin/be3600-uninstall /etc/init.d/be3600-screensaver /etc/be3600-screen /etc/rc.d/S99be3600-screensaver /etc/rc.d/K10be3600-screensaver"
 grep -qxF "# be3600-screensaver" /etc/sysupgrade.conf || echo "# be3600-screensaver" >> /etc/sysupgrade.conf
 for P in $KEEP; do
     grep -qxF "$P" /etc/sysupgrade.conf || echo "$P" >> /etc/sysupgrade.conf

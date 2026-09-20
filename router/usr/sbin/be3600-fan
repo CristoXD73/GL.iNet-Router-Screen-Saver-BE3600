@@ -1,0 +1,227 @@
+#!/bin/sh
+#
+# be3600-fan -- use the cooling fan as a little speaker.
+#
+#   be3600-fan status              what the fan is doing right now
+#   be3600-fan chimes              the chimes it knows
+#   be3600-fan chime NAME          play one (ping, up, down, alert, ok, done, boot, siren,
+#                                  or one of your own from /etc/be3600-screen/chimes.d)
+#   be3600-fan play "STEPS"        your own: "120:300 180:300 240:500" is duty:milliseconds
+#   be3600-fan spin PERCENT        hold a speed (0-100) until you stop it
+#   be3600-fan spin auto           give the fan back to the temperature daemon
+#
+# Do not expect a tune. The only thing the fan can be told is how fast to spin, and on this
+# router what you hear at any speed is broadband rush, not a note -- the blade-passing tone is
+# buried in it. Changing speed is also slow: it takes roughly half a second to get there.
+#
+# So a chime here is rhythm and loudness, like knocking on a door: bursts of air with silence
+# between them. One burst is a notice, two rising means something came back, two falling means
+# something went away, three means look at the screen. Anything faster than about a third of a
+# second per burst runs together into one noise.
+#
+# It only ever writes a PWM duty cycle, the same thing the temperature daemon writes,
+# and it always puts the old value back -- including if it is killed. It refuses to
+# play at all when the router is warm, so a chime can never come at the cost of cooling.
+
+CONF="${BE3600_CONF:-/etc/be3600-screen/config}"
+HW="${BE3600_HWMON:-/sys/class/hwmon/hwmon0}"
+ZONE="${BE3600_TEMPFILE:-/sys/class/thermal/thermal_zone0/temp}"
+LOCK="${BE3600_FANLOCK:-/tmp/be3600-fan.lock}"
+HOLD="${BE3600_FANHOLD:-/tmp/be3600-fan.hold}"
+CHIMES="${BE3600_CHIMES:-/etc/be3600-screen/chimes.d}"   # your own, saved from Fan Studio
+
+MAX_TEMP=70000            # millidegrees: warmer than this and nothing plays
+MAX_TOTAL_MS=12000        # a chime may not hold the fan for longer than this
+MIN_DUTY=90               # below this the fan is too quiet to hear a difference
+MAX_DUTY=255
+
+conf_get() {
+    sed -n "s/^$1=[\"']\{0,1\}\([^\"'#]*\).*/\1/p" "$CONF" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//'
+}
+
+have_fan() { [ -w "$HW/pwm1" ]; }
+duty_now() { cat "$HW/pwm1" 2>/dev/null || echo 0; }
+
+# The one place the fan is ever written. BE3600_TRACE is for the tests: it records the pattern
+# that would have been played, so they can check it without a fan.
+set_duty() {
+    echo "$1" > "$HW/pwm1" 2>/dev/null
+    [ -n "$BE3600_TRACE" ] && echo "$1" >> "$BE3600_TRACE"
+    return 0
+}
+
+rpm_now()  { cat "$HW/fan1_input" 2>/dev/null || echo 0; }
+temp_now() { cat "$ZONE" 2>/dev/null || echo 0; }
+
+# BusyBox sleep takes whole seconds only, so waits go through usleep where there is one.
+USLEEP="$(command -v usleep 2>/dev/null)"
+ms() {
+    [ -n "$BE3600_FAN_NOSLEEP" ] && return 0
+    if [ -n "$USLEEP" ]; then
+        "$USLEEP" $(($1 * 1000))
+    else
+        sleep "$(awk -v m="$1" 'BEGIN { printf "%.3f", m / 1000 }')"
+    fi
+}
+
+# ---------------------------------------------------------------- the chimes
+# duty:milliseconds, played in order. 255 is a burst of air, 0 is silence, and the gaps matter
+# as much as the bursts: the fan takes its time both spinning up and coasting down.
+chime_steps() {
+    case "$1" in
+        ping|info)  echo "255:420" ;;                                        # one knock
+        up|good)    echo "255:380 0:460 255:700" ;;                          # short then long: it came back
+        down|bad)   echo "255:700 0:460 255:380" ;;                          # long then short: it went away
+        alert|warn) echo "255:380 0:430 255:380 0:430 255:380" ;;            # three knocks: look at the screen
+        ok)         echo "255:850" ;;                                        # one long breath
+        done)       echo "255:340 0:400 255:340 0:400 255:340 0:400 255:760" ;;
+        boot)       echo "60:300 110:300 150:300 190:300 220:300 255:600" ;; # a swell, from nothing to full
+        siren)      echo "255:450 90:450 255:450 90:450 255:500" ;;          # in and out, never silent
+        *)
+            # anything else is one of your own, saved from Fan Studio into chimes.d
+            case "$1" in ''|*[!A-Za-z0-9._-]*|.*) return 1 ;; esac
+            [ -f "$CHIMES/$1" ] || return 1
+            STEPS="$(grep -v '^[[:space:]]*#' "$CHIMES/$1" | tr '\n' ' ')"
+            [ -n "$STEPS" ] || return 1
+            echo "$STEPS"
+            ;;
+    esac
+}
+
+BUILTIN_NAMES="ping up down alert ok done boot siren"
+chime_names() {
+    echo "$BUILTIN_NAMES"
+    for F in "$CHIMES"/*; do
+        [ -f "$F" ] || continue
+        N="${F##*/}"
+        case "$N" in *[!A-Za-z0-9._-]*|.*) continue ;; esac
+        echo "$N"
+    done
+}
+
+# ---------------------------------------------------------------- playing
+# Whatever happens from here on, the fan goes back to where it was.
+restore() {
+    [ -n "$WAS" ] && set_duty "$WAS"          # including a speed someone is holding by hand
+}
+
+# Refuse to play when the router needs its fan for its real job, or when the
+# screen's quiet hours are on.
+quiet_now() {
+    Q="$(conf_get FAN_CHIME_QUIET)"
+    [ -n "$Q" ] || return 1
+    case "$Q" in *-*) ;; *) return 1 ;; esac
+    S="${Q%%-*}"; E="${Q##*-}"
+    N="$(date +%H%M | sed 's/^0*//')"; N="${N:-0}"
+    S="$(echo "$S" | tr -d ':' | sed 's/^0*//')"; S="${S:-0}"
+    E="$(echo "$E" | tr -d ':' | sed 's/^0*//')"; E="${E:-0}"
+    if [ "$S" -le "$E" ]; then
+        [ "$N" -ge "$S" ] && [ "$N" -lt "$E" ]
+    else
+        [ "$N" -ge "$S" ] || [ "$N" -lt "$E" ]
+    fi
+}
+
+play_steps() {
+    have_fan || { echo "this router has no controllable fan" >&2; exit 1; }
+
+    TOTAL=0
+    for STEP in $1; do
+        case "$STEP" in
+            *:*) ;;
+            *) echo "each step is duty:milliseconds, e.g. 180:300" >&2; exit 1 ;;
+        esac
+        D="${STEP%%:*}"; T="${STEP##*:}"
+        case "$D$T" in *[!0-9]*) echo "duty and milliseconds must be numbers: $STEP" >&2; exit 1 ;; esac
+        [ "$D" -le "$MAX_DUTY" ] || { echo "the highest duty is $MAX_DUTY" >&2; exit 1; }
+        [ "$T" -ge 20 ] || { echo "steps shorter than 20 ms do nothing" >&2; exit 1; }
+        TOTAL=$((TOTAL + T))
+    done
+    [ "$TOTAL" -le "$MAX_TOTAL_MS" ] || { echo "that would hold the fan for ${TOTAL}ms; the limit is ${MAX_TOTAL_MS}ms" >&2; exit 1; }
+
+    NOW_T="$(temp_now)"
+    [ "$NOW_T" -lt "$MAX_TEMP" ] || { echo "the router is at $((NOW_T / 1000))C; the fan is busy cooling it" >&2; exit 2; }
+
+    WAS="$(duty_now)"
+    trap restore EXIT INT TERM HUP
+    for STEP in $1; do
+        D="${STEP%%:*}"; T="${STEP##*:}"
+        set_duty "$D"
+        ms "$T"
+    done
+}
+
+# ---------------------------------------------------------------- commands
+case "$1" in
+
+status)
+    if have_fan; then
+        D="$(duty_now)"
+        echo "fan:    $(rpm_now) rpm at duty $D of $MAX_DUTY"
+        echo "temp:   $(($(temp_now) / 1000))C  (chimes stop above $((MAX_TEMP / 1000))C)"
+        if [ -f "$HOLD" ]; then echo "held:   yes, by be3600-fan spin ($(cat "$HOLD") %)"; else echo "held:   no (the temperature daemon has it)"; fi
+        C="$(conf_get FAN_CHIME)"
+        echo "chimes: ${C:-0}  (FAN_CHIME in $CONF)"
+        Q="$(conf_get FAN_CHIME_QUIET)"
+        [ -n "$Q" ] && echo "quiet:  $Q$(quiet_now && echo '  <- now')"
+    else
+        echo "no controllable fan on this router ($HW/pwm1 is not writable)"
+        exit 1
+    fi
+    ;;
+
+chimes)
+    echo "chimes:"
+    for C in $(chime_names); do printf '  %-10s %s\n' "$C" "$(chime_steps "$C")"; done
+    echo
+    echo "play one with:  be3600-fan chime up"
+    echo "design your own in Fan Studio and save it into $CHIMES/"
+    ;;
+
+chime)
+    STEPS="$(chime_steps "$2")" || { echo "chimes: $(chime_names | tr '\n' ' ')" >&2; exit 1; }
+    if [ "$3" != "--force" ] && quiet_now; then exit 0; fi
+    # one chime at a time; a second one simply gives up rather than fighting over the fan
+    if command -v flock >/dev/null 2>&1; then
+        flock -n 9 2>/dev/null || exit 0
+    fi
+    play_steps "$STEPS"
+    ;;
+
+play)
+    [ -n "$2" ] || { echo "usage: be3600-fan play \"120:300 180:300 240:500\"" >&2; exit 1; }
+    if command -v flock >/dev/null 2>&1; then
+        flock -n 9 2>/dev/null || { echo "the fan is busy" >&2; exit 1; }
+    fi
+    play_steps "$2"
+    ;;
+
+spin)
+    have_fan || { echo "this router has no controllable fan" >&2; exit 1; }
+    case "$2" in
+        auto|'')
+            set_duty 0
+            rm -f "$HOLD"
+            echo "the temperature daemon has the fan again."
+            ;;
+        *[!0-9]*) echo "usage: be3600-fan spin 0-100 | auto" >&2; exit 1 ;;
+        *)
+            [ "$2" -le 100 ] || { echo "0 to 100, please" >&2; exit 1; }
+            if [ "$2" = 0 ]; then
+                D=0
+            else
+                D=$((MIN_DUTY + (MAX_DUTY - MIN_DUTY) * $2 / 100))
+            fi
+            set_duty "$D"
+            echo "$2" > "$HOLD"
+            echo "holding duty $D. Give it back with: be3600-fan spin auto"
+            ;;
+    esac
+    ;;
+
+*)
+    sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
+
+esac 9>"$LOCK"

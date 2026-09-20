@@ -24,7 +24,7 @@ jobs:
           shellcheck install.sh set-animation.sh studio-link.sh setup/*.sh native/build.sh
           native/build-reproducible.sh native/reproducible-inner.sh tests/run.sh
           router/usr/bin/be3600-screensaver router/usr/bin/be3600-widgetd router/usr/sbin/be3600-anim router/usr/sbin/be3600-widget-action
-          router/etc/init.d/be3600-screensaver
+          router/usr/sbin/be3600-fan router/etc/init.d/be3600-screensaver
 
       # The shipped router binary must be exactly what native/be3600-player.c builds: the
       # build runs in a container pinned by digest with the compiler taken from a dated

@@ -72,6 +72,8 @@ def make_tree():
     w(d + "/guest.txt", "state=on\nssid=Guest-Wifi\n")
     w(d + "/wifiqr.txt", "ssid=Guest-Wifi\nenc=WPA\nkey=Tesla1234;x\n")
     w(d + "/weather.txt", "temp=14.6\ncode=61\nwind=18\nhi=17\nlo=9\nunit=C\nplace=Toronto\n")
+    w(d + "/path.txt", "gw=192.168.0.1\ngw_ms=3.0\nnet_ms=18.2\ndns_ms=42\n")
+    w(d + "/talkers.txt", "dev|iPhone|5200000|240000\ndev|CyberDeck|910000|80000\ndev|Living room TV|420000|12000\ndev|Printer|9000|1200\n")
     w(d + "/custom-solar.txt", "title: Solar\nbig: 3.2 kW\nline: today 14.1 kWh\nline: battery 78%\nbar: 78\nspark: 1 2 4 6 5 7 9 8 6 5\ncolor: green\n")
     return root
 
@@ -105,8 +107,8 @@ def to_image(fbdata):
     return im
 
 
-PAGES = ["clock", "netspeed", "vitals", "info", "clients", "internet", "usage", "vpn", "health",
-         "pomodoro", "stopwatch", "message", "guest", "wifiqr", "weather", "custom:solar"]
+PAGES = ["clock", "analog", "aurora", "netspeed", "talkers", "vitals", "info", "clients", "internet", "doctor",
+         "usage", "vpn", "health", "pomodoro", "stopwatch", "message", "guest", "wifiqr", "weather", "custom:solar"]
 
 
 def main():
@@ -149,6 +151,15 @@ def main():
     check(m is not None, "the message page copes with no message")
     m2, err = render(root, "nonesuch")
     check(m2 is None, "an unknown page is refused")
+
+    a, _ = render(root, "doctor")
+    w(root + "/data/path.txt", "gw=192.168.0.1\ngw_ms=3.0\nnet_ms=-1\ndns_ms=-1\n")
+    b, _ = render(root, "doctor")
+    check(a != b, "the doctor page changes when the internet stops answering")
+    a, _ = render(root, "talkers")
+    w(root + "/data/talkers.txt", "")
+    b, _ = render(root, "talkers")
+    check(a != b, "the in-use board changes when nothing is talking")
 
     print("== the Wi-Fi QR code")
     zbar = shutil.which("zbarimg")

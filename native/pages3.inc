@@ -10,6 +10,7 @@ static struct alert aq[4];
 static int aq_n;
 static long ev_offset = -1;
 static int cfg_alerts = 1;
+static int cfg_chime;                 /* FAN_CHIME: a banner is also heard, on the cooling fan */
 
 static void alert_push(int level, const char *text)
 {
@@ -527,41 +528,3 @@ static void w_custom(void)
     if (have_bar) cv_capsule(14, CH - 10, CW - 28, 6, bar, level_color(bar, 75, 90));
 }
 
-/* ---------------------------------------------------------------- the pages */
-struct widget_def {
-    const char *name;
-    void (*draw)(void);
-    int fps;                       /* redraws per second */
-    int (*tap)(void);              /* if set, a single tap does this instead of going to the next page */
-    int (*hold)(void);             /* if set, holding a finger down does this */
-    const char *needs;             /* what the helper must collect: "" nothing, else a list for be3600-widgetd */
-};
-
-static const struct widget_def widget_table[] = {
-    { "clock",     w_clock,     1,  NULL,   NULL,       "" },
-    { "netspeed",  w_netspeed,  1,  NULL,   NULL,       "" },
-    { "vitals",    w_vitals,    1,  NULL,   NULL,       "" },
-    { "info",      w_info,      1,  NULL,   NULL,       "" },
-    { "clients",   w_clients,   1,  NULL,   NULL,       "wifi" },
-    { "internet",  w_internet,  1,  NULL,   NULL,       "ping" },
-    { "usage",     w_usage,     1,  NULL,   NULL,       "" },
-    { "vpn",       w_vpn,       1,  NULL,   NULL,       "vpn" },
-    { "health",    w_health,    1,  NULL,   NULL,       "ping vpn" },
-    { "pomodoro",  w_pomodoro,  1,  pt_tap, pt_hold,    "" },
-    { "stopwatch", w_stopwatch, 10, sw_tap, sw_hold,    "" },
-    { "message",   w_message,   20, NULL,   NULL,       "" },
-    { "guest",     w_guest,     4,  NULL,   guest_hold, "guest" },
-    { "wifiqr",    w_wifiqr,    1,  NULL,   NULL,       "wifiqr" },
-    { "weather",   w_weather,   1,  NULL,   NULL,       "weather" },
-    { "custom",    w_custom,    1,  NULL,   NULL,       "custom" },
-};
-#define N_WIDGETS ((int)(sizeof widget_table / sizeof widget_table[0]))
-
-static int widget_find(const char *name)
-{
-    int i;
-
-    for (i = 0; i < N_WIDGETS; i++)
-        if (strcmp(widget_table[i].name, name) == 0) return i;
-    return -1;
-}

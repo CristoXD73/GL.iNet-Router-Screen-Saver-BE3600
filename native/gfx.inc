@@ -176,6 +176,32 @@ static void trig_init(void)
     trig_ready = 1;
 }
 
+/* sin and cos of any angle in degrees (0 = up is handled by the callers), by interpolating the table. */
+static float fsin_d(float deg)
+{
+    int i;
+    float f;
+
+    trig_init();
+    while (deg < 0) deg += 360.0f;
+    while (deg >= 360.0f) deg -= 360.0f;
+    i = (int)deg;
+    f = deg - (float)i;
+    return stab[i] + (stab[i + 1] - stab[i]) * f;
+}
+
+static float fcos_d(float deg)
+{
+    int i;
+    float f;
+
+    trig_init();
+    while (deg < 0) deg += 360.0f;
+    while (deg >= 360.0f) deg -= 360.0f;
+    i = (int)deg;
+    f = deg - (float)i;
+    return ctab[i] + (ctab[i + 1] - ctab[i]) * f;
+}
 /* An arc of a ring: from degrees a0 to a1, clockwise, 0 = straight up, with round ends. */
 static void mk_arc(float cx, float cy, float r, float thick, float a0, float a1)
 {
@@ -198,6 +224,43 @@ static void mk_arc(float cx, float cy, float r, float thick, float a0, float a1)
     }
 }
 
+/* The same, but the whole shape at a fraction of full strength (for fading tails and glows). */
+static void mk_flush_a(uint16_t c, int alpha)
+{
+    int x, y;
+
+    if (alpha > 255) alpha = 255;
+    for (y = mk_y0; y <= mk_y1; y++)
+        for (x = mk_x0; x <= mk_x1; x++)
+            if (mk[y][x]) { cv_blend(x, y, c, mk[y][x] * alpha / 255); mk[y][x] = 0; }
+    mk_x0 = CW; mk_x1 = -1; mk_y0 = CH; mk_y1 = -1;
+}
+
+/* A vertical gradient. The display only has 5 or 6 bits per colour, so the steps are dithered with an ordered
+ * 4x4 pattern; without it a slow fade shows as visible bands. */
+static void cv_vgrad(int y0, int y1, uint16_t top, uint16_t bot)
+{
+    static const int bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
+    int x, y;
+    int r0 = (top >> 11) & 31, g0 = (top >> 5) & 63, b0 = top & 31;
+    int r1 = (bot >> 11) & 31, g1 = (bot >> 5) & 63, b1 = bot & 31;
+    int span = y1 - y0 > 1 ? y1 - y0 - 1 : 1;
+
+    for (y = y0; y < y1; y++) {
+        int t = (y - y0) * 256 / span;
+        int r = r0 * (256 - t) + r1 * t, g = g0 * (256 - t) + g1 * t, b = b0 * (256 - t) + b1 * t;
+
+        for (x = 0; x < CW; x++) {
+            int d = bayer[y & 3][x & 3] * 16;
+            int rr = (r + d) >> 8, gg = (g + d) >> 8, bb = (b + d) >> 8;
+
+            if (rr > 31) rr = 31;
+            if (gg > 63) gg = 63;
+            if (bb > 31) bb = 31;
+            cv[y][x] = (uint16_t)((rr << 11) | (gg << 5) | bb);
+        }
+    }
+}
 /* ---------------------------------------------------------------- shapes, painted */
 static void cv_dot(float cx, float cy, float r, uint16_t c) { mk_disc(cx, cy, r); mk_flush(c); }
 static void cv_card(float x, float y, float w, float h, float r, uint16_t c) { mk_rrect(x, y, w, h, r); mk_flush(c); }

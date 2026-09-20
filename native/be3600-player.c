@@ -466,6 +466,7 @@ static void slide_between(const uint8_t *other, int from, int to, unsigned ms)
 #include "pages2.inc"
 #include "qr.inc"
 #include "pages3.inc"
+#include "pages4.inc"
 
 /* Settings: plain KEY=value lines of the config file (the same file the supervisor reads). */
 static const char *cfg_file = "/etc/be3600-screen/config";
@@ -1253,6 +1254,8 @@ static void run_banners(void)
         last_touch_ms = start;                          /* an alert wakes a dimmed screen */
         night_wake();
         note("alert: %s (%d)", a.text, a.level);
+        if (cfg_chime)                                  /* and, if asked to, is heard on the cooling fan */
+            run_action("chime", a.level == AL_BAD ? "bad" : a.level == AL_WARN ? "warn" : a.level == AL_GOOD ? "good" : "info");
         while (!stop_requested && !dismiss && mono_ms() - start < 6500) {
             cv_fill(C_BLACK);
             draw_banner(&a, mono_ms() - start);
@@ -1468,6 +1471,7 @@ int main(int argc, char **argv)
     cfg_pomo[2] = (int)cfg_num("POMODORO_LONG_MIN", 15);
     for (ai = 0; ai < 3; ai++) if (cfg_pomo[ai] < 1 || cfg_pomo[ai] > 240) cfg_pomo[ai] = ai == 0 ? 25 : ai == 1 ? 5 : 15;
     cfg_alerts = cfg_num("ALERTS", 1) != 0;
+    cfg_chime = cfg_num("FAN_CHIME", 0) != 0;
     autoplay_s = (int)cfg_num("AUTOPLAY_SECONDS", 0);
     if (autoplay_s < 0) autoplay_s = 0;
     if (cfg_get("NIGHT_START", v, sizeof v)) night_start = parse_hm(v);

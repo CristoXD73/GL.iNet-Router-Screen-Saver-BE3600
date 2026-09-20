@@ -241,11 +241,15 @@ be3600-anim pages reset                                      # back to animation
 | Page | What it shows |
 |---|---|
 | `clock` | Big time and date, with a seconds bar; drifts a pixel now and then so nothing burns in |
+| `analog` | An analog watch face with a smooth sweeping second hand |
+| `aurora` | Your traffic as drifting light: calm when idle, a river during a download |
 | `netspeed` | Live download / upload speed and a one-minute graph |
+| `talkers` | Which device is using the internet right now, and how much |
 | `vitals` | CPU, memory, storage and temperature as activity rings |
 | `info` | Uptime, load, LAN / WAN addresses, firmware |
 | `clients` | Wi-Fi devices with their names, addresses and signal strength |
 | `internet` | Online / offline, latency graph, packet loss (pings `PING_TARGET`) |
+| `doctor` | Where the trouble is: this router, the ISP link, the internet, name lookups |
 | `usage` | Data used today and this month, with a cap bar if you set `DATA_CAP_GB` |
 | `vpn` | WireGuard / OpenVPN tunnels and how long ago they last shook hands |
 | `health` | One glance: is everything fine? Lists what is not |
@@ -266,8 +270,53 @@ And around them:
 * **Night mode:** between `NIGHT_START` and `NIGHT_END` the backlight dims to `NIGHT_BRIGHTNESS`
   (0 = dark). A touch wakes it for 20 seconds and does nothing else.
 * **Schedule:** `SCHEDULE="22:00=clock 07:00=animations"` shows a page at set times.
+* **Chimes you can hear:** the router's one moving part is its cooling fan, and `FAN_CHIME=1`
+  lets a banner knock as well as appear. See below for what that does and does not sound like.
 
 All settings are documented in `/etc/be3600-screen/config`.
+
+<details>
+<summary>Hearing the router: chimes on the cooling fan</summary>
+
+The BE3600 has no speaker and no LEDs, but it does have a fan, and a fan can be told how fast to
+spin. `be3600-fan` uses that as a doorbell.
+
+Be clear about what it is not. It is not a tune. A fan's blade-passing tone is completely buried
+in broadband rush on this router, so **there is no pitch to play with** -- pitched jingles were
+tried and they are indistinguishable from a draught of air. What is left is rhythm and loudness:
+bursts of air with silence between them, like knocking on a door. Nothing faster than about a
+third of a second per burst survives, because the fan needs that long to spin up or coast down.
+
+```
+be3600-fan chimes            what it knows: ping, up, down, alert, ok, done, boot, siren
+be3600-anim chime alert      hear one
+be3600-fan play "255:400 0:450 255:700"      your own, as duty:milliseconds
+be3600-fan spin 60           hold a speed; "spin auto" hands it back
+```
+
+Set `FAN_CHIME=1` and every banner is heard as well as seen: two rising bursts when something
+comes back, two falling when it goes away, three knocks for a warning. `FAN_CHIME_QUIET="22:00-08:00"`
+keeps it silent overnight.
+
+Cooling always wins: nothing plays above 70 °C, the fan is put back exactly as it was found even
+if the command is killed, and no chime may hold it for longer than six seconds. Routers without
+a controllable fan simply say so.
+
+**[Fan Studio](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/fan.html)** is
+for designing your own. Drag the bars, and it shows you what the fan will actually do: the speed curve
+is simulated from measurements taken off this router's own tachometer (spin-up 0.85 s, coast-down
+0.75 s, half a second of dead time before a stopped rotor breaks away), so you can see a 200 ms blip
+fail to reach full speed instead of finding out by ear. It plays an approximation through your
+speakers, and saves a `.chime` file. Drop that in `/etc/be3600-screen/chimes.d/` and it plays by name:
+
+```
+be3600-fan chime mychime
+```
+
+`tools/sound_to_fan.py` turns a short WAV into fan steps, which is how the 1-UP jingle was tried --
+and how it was established that melodies are out of reach.
+
+</details>
 
 <details>
 <summary>Your own pages</summary>

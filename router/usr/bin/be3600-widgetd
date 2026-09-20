@@ -10,6 +10,8 @@
 #   guest.txt     is the guest Wi-Fi on                          (guest)
 #   wifiqr.txt    the network to show as a QR code               (wifiqr)
 #   weather.txt   current weather from open-meteo.com            (weather)
+#   path.txt      how far out the network works: router, ISP link, internet, names   (doctor)
+#   talkers.txt   bytes per device right now, from the kernel's connection table      (talkers)
 #   custom-*.txt  output of your scripts in /etc/be3600-screen/widgets.d
 #   events        one line per thing worth a banner (internet down/up, new device, VPN change)
 #
@@ -22,13 +24,16 @@ LEASES="${BE3600_LEASES:-/tmp/dhcp.leases}"
 PAGES="animations"
 PING_TARGET="1.1.1.1"
 PING_INTERVAL=5
+DNS_PROBE="openwrt.org"
+CONNTRACK="${BE3600_CONNTRACK:-/proc/net/nf_conntrack}"
 ALERTS=1
 WIFI_QR_SECTION=""
 WEATHER_LAT=""
 WEATHER_LON=""
 WEATHER_UNITS="C"
 WEATHER_PLACE=""
-ONCE="${BE3600_ONCE:-0}"                 # tests: one round of everything, then stop
+ONCE="${BE3600_ONCE:-0}"                 # tests: a few rounds, then stop
+ONCE_N="${BE3600_ONCE_N:-4}"             # tests: how many rounds that means
 
 # shellcheck source=/dev/null
 [ -r "$CONF" ] && . "$CONF"
@@ -38,7 +43,7 @@ mkdir -p "$D"
 has() { case " $PAGES " in *" $1 "*) return 0 ;; esac; return 1; }
 has_prefix() { case " $PAGES " in *" $1"*) return 0 ;; esac; return 1; }
 
-NEED_PING=0; NEED_WIFI=0; NEED_VPN=0; NEED_GUEST=0; NEED_QR=0; NEED_WEATHER=0; NEED_CUSTOM=0
+NEED_PING=0; NEED_WIFI=0; NEED_VPN=0; NEED_GUEST=0; NEED_QR=0; NEED_WEATHER=0; NEED_CUSTOM=0; NEED_PATH=0; NEED_TALKERS=0
 { has internet || has health; }   && NEED_PING=1
 has clients                      && NEED_WIFI=1
 { has vpn || has health; }        && NEED_VPN=1
@@ -46,6 +51,8 @@ has guest                        && NEED_GUEST=1
 has wifiqr                       && NEED_QR=1
 has weather                      && NEED_WEATHER=1
 { has custom || has_prefix "custom:"; } && NEED_CUSTOM=1
+has doctor                       && NEED_PATH=1
+has talkers                      && NEED_TALKERS=1
 # New-device alerts need the client list even when its page is not shown.
 [ "$ALERTS" != 0 ] && NEED_WIFI=1
 
@@ -211,6 +218,95 @@ collect_custom() {
     done
 }
 
+# ---------------------------------------------------------------- network doctor
+# How far out does the network work? Each stop is timed on its own, so the first one that fails is the culprit.
+ping_ms() {
+    [ -n "$1" ] || { echo -1; return; }
+    MS="$(ping -c 1 -W 2 "$1" 2>/dev/null | sed -n 's/.*time=\([0-9.]*\) ms.*/\1/p' | head -n 1)"
+    echo "${MS:--1}"
+}
+
+dns_ms() {
+    if command -v dig >/dev/null 2>&1; then
+        MS="$(dig +tries=1 +time=2 "$DNS_PROBE" 2>/dev/null | sed -n 's/^;; Query time: \([0-9]*\) msec.*/\1/p' | head -n 1)"
+        echo "${MS:--1}"
+    elif nslookup "$DNS_PROBE" >/dev/null 2>&1; then
+        echo 0                      # it works, but this router cannot time it
+    else
+        echo -1
+    fi
+}
+
+collect_path() {
+    GW="$(ip route show default 2>/dev/null | awk '/default/ { print $3; exit }')"
+    printf 'gw=%s\ngw_ms=%s\nnet_ms=%s\ndns_ms=%s\n' \
+        "$GW" "$(ping_ms "$GW")" "$(ping_ms "$PING_TARGET")" "$(dns_ms)" | put path.txt
+}
+
+# ---------------------------------------------------------------- who is using the internet
+# The kernel already counts the bytes of every connection (nf_conntrack_acct), so nothing is added to the
+# firewall: this only reads. Each round remembers the byte count of every flow and adds up what grew since.
+collect_talkers() {
+    [ -r "$CONNTRACK" ] || { printf '' | put talkers.txt; return; }
+    NOWTS="$(now)"
+    awk -v now="$NOWTS" -v state="$D/.flows" -v leases="$LEASES" '
+        function lan(a) { return a ~ /^192\.168\./ || a ~ /^10\./ || a ~ /^172\.(1[6-9]|2[0-9]|3[01])\./ }
+        BEGIN {
+            tmpf = state ".tmp"
+            then = 0
+            while ((getline line < state) > 0) {
+                split(line, p, " ")
+                if (p[1] == "#t") { then = p[2] + 0; continue }
+                was_up[p[1]] = p[2] + 0
+                was_down[p[1]] = p[3] + 0
+                known[p[1]] = 1
+            }
+            close(state)
+            while ((getline line < leases) > 0) {
+                split(line, l, " ")
+                if (l[4] != "" && l[4] != "*") name[l[3]] = l[4]
+            }
+            close(leases)
+            dt = now - then
+            if (dt < 1 || dt > 600) dt = 0          # no previous round (or a very old one): only remember
+        }
+        {
+            sc = 0; dc = 0; bc = 0; pc = 0
+            src = ""; dst = ""; sport = ""; dport = ""; b1 = 0; b2 = 0
+            for (i = 1; i <= NF; i++) {
+                if (substr($i, 1, 4) == "src=") { sc++; if (sc == 1) src = substr($i, 5) }
+                else if (substr($i, 1, 4) == "dst=") { dc++; if (dc == 1) dst = substr($i, 5) }
+                else if (substr($i, 1, 6) == "sport=") { pc++; if (pc == 1) sport = substr($i, 7) }
+                else if (substr($i, 1, 6) == "dport=") { if (dport == "") dport = substr($i, 7) }
+                else if (substr($i, 1, 6) == "bytes=") { bc++; if (bc == 1) b1 = substr($i, 7) + 0; else if (bc == 2) b2 = substr($i, 7) + 0 }
+            }
+            if (src == "" || !lan(src) || lan(dst)) next
+            key = src ":" sport "-" dst ":" dport
+            seen[key] = b1 " " b2
+            if (dt > 0) {
+                if (known[key]) {
+                    u = b1 - was_up[key]; if (u < 0) u = 0
+                    d = b2 - was_down[key]; if (d < 0) d = 0
+                } else { u = b1; d = b2 }           # a connection that started during this round
+                up[src] += u
+                down[src] += d
+            }
+        }
+        END {
+            printf "#t %d\n", now > tmpf
+            for (k in seen) printf "%s %s\n", k, seen[k] > tmpf
+            close(tmpf)
+            if (dt <= 0) exit
+            for (a in down) {
+                if (down[a] + up[a] < 256) continue          # ignore the trickle of keep-alives
+                n = (a in name) ? name[a] : a
+                gsub(/\|/, "", n)
+                printf "%d\tdev|%s|%.0f|%.0f\n", down[a] + up[a], n, down[a] / dt, up[a] / dt
+            }
+        }
+    ' "$CONNTRACK" | sort -rn | cut -f2- | head -n 8 | put talkers.txt
+    [ -f "$D/.flows.tmp" ] && mv "$D/.flows.tmp" "$D/.flows"
+}
 # ---------------------------------------------------------------- the loop
 N=0
 while :; do
@@ -221,8 +317,9 @@ while :; do
     [ "$NEED_QR" = 1 ] && [ $((N % 60)) -eq 0 ] && collect_qr
     [ "$NEED_WEATHER" = 1 ] && [ $((N % 900)) -eq 3 ] && collect_weather
     [ "$NEED_CUSTOM" = 1 ] && [ $((N % 5)) -eq 4 ] && collect_custom
-    [ "$ONCE" = 1 ] && [ "$N" -ge 4 ] && break
+    [ "$NEED_PATH" = 1 ] && [ $((N % 15)) -eq 3 ] && collect_path
+    [ "$NEED_TALKERS" = 1 ] && [ $((N % 3)) -eq 0 ] && collect_talkers
+    [ "$ONCE" = 1 ] && [ "$N" -ge "$ONCE_N" ] && break
     N=$((N + 1))
-    if [ "$ONCE" = 1 ]; then continue; fi
     sleep 1
 done

@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- This page loads nothing from anywhere else and talks to nothing. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>BE3600 Fan Studio</title>
+<style>
+:root{
+  --bg:#edf0f4;--glass:rgba(255,255,255,.72);--text:#111318;--muted:#777b84;--line:rgba(18,21,29,.08);
+  --shadow:0 24px 72px rgba(28,34,48,.12),0 5px 18px rgba(28,34,48,.06);
+  --blue:#0a84ff;--green:#30b14f;--orange:#f08a12;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;min-height:100%}
+body{background:radial-gradient(circle at 12% 0%,rgba(98,181,255,.16),transparent 28%),
+  radial-gradient(circle at 87% 4%,rgba(171,139,255,.15),transparent 25%),var(--bg);color:var(--text);padding:14px}
+button,input,select,textarea{font:inherit}
+.glass{background:var(--glass);border:1px solid rgba(255,255,255,.75);backdrop-filter:blur(28px) saturate(145%);
+  -webkit-backdrop-filter:blur(28px) saturate(145%);box-shadow:var(--shadow)}
+.topbar{border-radius:22px;padding:13px 16px;display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.mark{width:40px;height:40px;border-radius:14px;background:#111318;display:grid;place-items:center;flex:none}
+.mark i{display:block;width:17px;height:17px;border:2.5px solid #fff;border-radius:50%;border-right-color:transparent;border-bottom-color:transparent;animation:spin 1.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.mark i{animation-duration:6s}}
+.brand strong{display:block;font-size:15px;letter-spacing:-.02em}
+.brand small{display:block;font-size:8px;color:var(--muted);margin-top:2px}
+.spacer{flex:1}
+.btn{border:0;cursor:pointer;height:36px;border-radius:11px;padding:0 14px;font-size:10px;font-weight:700;
+  background:rgba(255,255,255,.65);box-shadow:inset 0 0 0 1px var(--line)}
+.btn.dark{background:#111318;color:#fff;box-shadow:0 7px 18px rgba(17,19,24,.15)}
+.btn:hover{transform:translateY(-1px)}
+.btn:disabled{opacity:.45;cursor:default;transform:none}
+main{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:12px;margin-top:12px;align-items:start}
+@media(max-width:900px){main{grid-template-columns:minmax(0,1fr)}}
+.panel{border-radius:22px;padding:15px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 9px}
+canvas{width:100%;display:block;border-radius:14px;background:rgba(255,255,255,.5);box-shadow:inset 0 0 0 1px var(--line);touch-action:none}
+.chart+.chart{margin-top:11px}
+.chart small{display:block;font-size:8px;color:var(--muted);margin:5px 2px 0}
+.hint{font-size:9px;color:var(--muted);line-height:1.5;margin:9px 2px 0}
+.row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:10px}
+textarea{width:100%;height:58px;resize:vertical;border-radius:12px;border:0;padding:10px;
+  box-shadow:inset 0 0 0 1px var(--line);background:rgba(255,255,255,.72);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
+.cmd{border-radius:12px;background:#111318;color:#d7dbe2;padding:10px 12px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:10px;word-break:break-all;margin-top:9px}
+.field{margin-bottom:11px}
+.field label{display:flex;justify-content:space-between;font-size:9px;font-weight:700;margin-bottom:5px}
+.field label b{color:var(--muted);font-weight:700}
+input[type=range]{width:100%;accent-color:#111318}
+select,input[type=text]{width:100%;height:32px;border:0;border-radius:10px;padding:0 9px;font-size:10px;
+  background:rgba(255,255,255,.72);box-shadow:inset 0 0 0 1px var(--line)}
+.presets{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.presets button{border:0;border-radius:11px;padding:9px;text-align:left;cursor:pointer;background:rgba(255,255,255,.5);
+  box-shadow:inset 0 0 0 1px var(--line)}
+.presets button b{display:block;font-size:10px}
+.presets button small{display:block;font-size:7.5px;color:var(--muted);margin-top:2px}
+.note{font-size:8px;color:var(--muted);line-height:1.5;margin-top:11px}
+.toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,18px);opacity:0;background:rgba(17,19,24,.94);
+  color:#fff;border-radius:11px;padding:9px 13px;font-size:10px;font-weight:700;pointer-events:none;transition:.2s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.legend{display:flex;gap:12px;font-size:8px;color:var(--muted);margin:6px 2px 0}
+.legend i{display:inline-block;width:9px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
+</style>
+</head>
+<body>
+
+<div class="topbar glass">
+  <div class="mark"><i></i></div>
+  <div class="brand"><strong>Fan Studio</strong><small>design a chime for the BE3600's cooling fan</small></div>
+  <div class="spacer"></div>
+  <button class="btn dark" id="play">Hear it</button>
+  <button class="btn" id="stop" disabled>Stop</button>
+  <button class="btn" id="save">Save .chime</button>
+  <button class="btn" id="load">Open…</button>
+  <input type="file" id="file" accept=".chime,.txt,text/plain" hidden>
+</div>
+
+<main>
+  <section class="panel glass">
+    <h2>The pattern</h2>
+    <div class="chart">
+      <canvas id="cDuty" height="200"></canvas>
+      <small>Drag a bar up or down for speed; drag its right edge for length. Double-click a bar to remove it, double-click the background to add one.</small>
+    </div>
+    <div class="chart">
+      <canvas id="cRpm" height="150"></canvas>
+      <div class="legend"><span><i style="background:var(--blue)"></i>what you asked for</span><span><i style="background:var(--green)"></i>what the fan actually does</span></div>
+    </div>
+    <div class="chart">
+      <canvas id="cSpl" height="130"></canvas>
+      <div class="legend"><span><i style="background:var(--orange)"></i>how loud it is, in dB above the quietest</span></div>
+    </div>
+
+    <div class="row">
+      <button class="btn" id="add">Add step</button>
+      <button class="btn" id="undo">Undo</button>
+      <span class="spacer"></span>
+      <button class="btn" id="copy">Copy command</button>
+    </div>
+    <textarea id="steps" spellcheck="false" aria-label="steps as text"></textarea>
+    <div class="cmd" id="cmd"></div>
+    <p class="hint" id="warn"></p>
+  </section>
+
+  <aside class="panel glass">
+    <h2>Start from</h2>
+    <div class="presets" id="presets"></div>
+
+    <h2 style="margin-top:16px">Name</h2>
+    <input type="text" id="name" value="mychime" spellcheck="false">
+
+    <h2 style="margin-top:16px">The fan</h2>
+    <div class="field"><label>Spin-up time <b id="vUp"></b></label><input type="range" id="tauUp" min="20" max="200" value="85"></div>
+    <div class="field"><label>Coast-down time <b id="vDn"></b></label><input type="range" id="tauDn" min="20" max="200" value="75"></div>
+    <div class="field"><label>Dead time from rest <b id="vDead"></b></label><input type="range" id="dead" min="0" max="120" value="50"></div>
+
+    <h2 style="margin-top:16px">The sound</h2>
+    <div class="field"><label>Rush brightness <b id="vBright"></b></label><input type="range" id="bright" min="500" max="6000" value="3000"></div>
+    <div class="field"><label>Case resonance <b id="vRes"></b></label><input type="range" id="res" min="200" max="2500" value="780"></div>
+    <div class="field"><label>Blade tone <b id="vTone"></b></label><input type="range" id="tone" min="0" max="100" value="8"></div>
+    <div class="field"><label>Blades <b id="vBlades"></b></label><input type="range" id="blades" min="3" max="15" value="7"></div>
+    <div class="field"><label>Volume <b id="vVol"></b></label><input type="range" id="vol" min="0" max="100" value="55"></div>
+    <button class="btn" id="reset" style="width:100%">Back to the measured fan</button>
+
+    <p class="note">
+      The speed curve is real: spin-up, coast-down and dead time were measured on a BE3600 with its own
+      tachometer, and loudness follows the fan law, 50&nbsp;log&#8321;&#8320; of speed. The timbre is a model, not a
+      recording &mdash; nobody has put a microphone in the case. Tune the three sound sliders until the
+      preview matches what you hear from the router, then design against it.
+    </p>
+  </aside>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+"use strict";
+
+/* ---------------------------------------------------------------- the fan, as measured on a BE3600 */
+var CAL = [[36,1096],[60,1759],[90,2711],[100,3118],[115,3349],[120,3432],[130,3702],[145,3946],
+           [160,4223],[175,4489],[190,4677],[200,4810],[205,4875],[220,5105],[235,5278],[250,5462],[255,5567]];
+var RPM_MAX = 5567, DUTY_MAX = 255, MAX_TOTAL_MS = 12000;
+
+function steady(duty) {
+  if (duty <= 0) return 0;
+  if (duty <= CAL[0][0]) return CAL[0][1] * duty / CAL[0][0];
+  for (var i = 0; i < CAL.length - 1; i++)
+    if (duty <= CAL[i + 1][0]) {
+      var a = CAL[i], b = CAL[i + 1];
+      return a[1] + (b[1] - a[1]) * (duty - a[0]) / (b[0] - a[0]);
+    }
+  return RPM_MAX;
+}
+
+/* First order with a dead time while the rotor is at a standstill. dt is in seconds. */
+function simulate(steps, p, dt) {
+  var out = [], rpm = 0, t = 0, still = 0;
+  for (var i = 0; i < steps.length; i++) {
+    var target = steady(steps[i][0]), end = t + steps[i][1] / 1000;
+    while (t < end) {
+      if (rpm < 1 && target > 0) {
+        still += dt;
+        if (still >= p.dead) rpm = 1;                    /* it has broken away and starts to turn */
+      } else {
+        still = 0;
+        rpm += (target - rpm) * dt / (target > rpm ? p.tauUp : p.tauDn);
+      }
+      out.push({ t: t, rpm: rpm, duty: steps[i][0] });
+      t += dt;
+    }
+  }
+  /* the tail: the fan is let go and coasts back down */
+  var tail = t + 2.2;
+  while (t < tail) { rpm += (0 - rpm) * dt / p.tauDn; out.push({ t: t, rpm: rpm, duty: -1 }); t += dt; }
+  return out;
+}
+
+/* Sound power of a fan goes as the fifth power of speed, so loudness is 50*log10(speed). */
+function spl(rpm) { return rpm < 60 ? 0 : Math.max(0, 50 * Math.log(rpm / 600) / Math.LN10); }
+var SPL_MAX = spl(RPM_MAX);
+
+/* ---------------------------------------------------------------- state */
+var PRESETS = [
+  ["rev",     "60:800 255:700 60:600 255:700 60:600 255:1800", "idle, two blips, then hold it"],
+  ["spool",   "60:400 90:300 120:300 150:300 180:300 210:300 240:300 255:2000", "turbo winding up"],
+  ["slam",    "0:400 255:2200", "silence, then everything at once"],
+  ["brap",    "90:500 255:450 90:350 255:450 90:350 255:2000", "two stabs, then pull away"],
+  ["blowoff", "150:500 255:2000 0:450 255:900", "on the gas, cut, stab again"],
+  ["knock",   "255:380 0:430 255:380 0:430 255:380", "three knocks"]
+];
+var steps = parse(PRESETS[0][1]), history = [];
+var P = { tauUp: 0.85, tauDn: 0.75, dead: 0.50, bright: 3000, res: 780, tone: 0.08, blades: 7, vol: 0.55 };
+var DEFAULTS = JSON.parse(JSON.stringify(P));
+
+function parse(s) {
+  var out = [];
+  (s || "").split(/[\s,]+/).forEach(function (tok) {
+    var m = /^(\d{1,3}):(\d{1,6})$/.exec(tok);
+    if (m) {
+      var d = Math.min(DUTY_MAX, +m[1]), ms = Math.max(20, +m[2]);
+      out.push([d, ms]);
+    }
+  });
+  return out.length ? out : [[255, 500]];
+}
+function text() { return steps.map(function (s) { return s[0] + ":" + s[1]; }).join(" "); }
+function total() { return steps.reduce(function (a, s) { return a + s[1]; }, 0); }
+function push() { history.push(JSON.stringify(steps)); if (history.length > 60) history.shift(); }
+
+/* ---------------------------------------------------------------- drawing */
+function ctxOf(c) {
+  var dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.getAttribute("height");
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px";
+  }
+  var x = c.getContext("2d");
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, w, h);
+  return { x: x, w: w, h: h };
+}
+function grid(g, rows) {
+  g.x.strokeStyle = "rgba(18,21,29,.07)"; g.x.lineWidth = 1;
+  for (var i = 0; i <= rows; i++) {
+    var y = 10 + (g.h - 24) * i / rows;
+    g.x.beginPath(); g.x.moveTo(8, y); g.x.lineTo(g.w - 8, y); g.x.stroke();
+  }
+}
+var SPAN = 1;                                    /* seconds across the charts, shared by all three */
+
+function drawDuty() {
+  var g = ctxOf(document.getElementById("cDuty"));
+  grid(g, 4);
+  var pad = 8, top = 10, bot = g.h - 14, t = 0;
+  for (var i = 0; i < steps.length; i++) {
+    var x0 = pad + (g.w - 2 * pad) * (t / SPAN), x1 = pad + (g.w - 2 * pad) * ((t + steps[i][1] / 1000) / SPAN);
+    var y = bot - (bot - top) * steps[i][0] / DUTY_MAX;
+    g.x.fillStyle = i === hot ? "rgba(10,132,255,.45)" : "rgba(10,132,255,.26)";
+    g.x.fillRect(x0, y, Math.max(2, x1 - x0 - 1.5), bot - y);
+    g.x.fillStyle = "rgba(10,132,255,.9)";
+    g.x.fillRect(x0, y, Math.max(2, x1 - x0 - 1.5), 2.5);
+    if (x1 - x0 > 30) {
+      g.x.fillStyle = "#4a5160"; g.x.font = "9px -apple-system,sans-serif"; g.x.textAlign = "center";
+      g.x.fillText(steps[i][0], (x0 + x1) / 2, Math.min(bot - 5, y + 13));
+    }
+    t += steps[i][1] / 1000;
+  }
+  g.x.fillStyle = "#9a9ea6"; g.x.font = "8px -apple-system,sans-serif"; g.x.textAlign = "left";
+  g.x.fillText("duty 255", 10, 18); g.x.fillText("0", 10, g.h - 4);
+  g.x.textAlign = "right"; g.x.fillText(SPAN.toFixed(1) + " s", g.w - 10, g.h - 4);
+}
+
+function curve(g, data, key, max, colour, fill) {
+  var pad = 8, top = 10, bot = g.h - 14;
+  g.x.beginPath();
+  for (var i = 0; i < data.length; i++) {
+    var x = pad + (g.w - 2 * pad) * (data[i].t / SPAN), y = bot - (bot - top) * Math.min(1, data[i][key] / max);
+    if (i === 0) g.x.moveTo(x, y); else g.x.lineTo(x, y);
+  }
+  g.x.strokeStyle = colour; g.x.lineWidth = 2; g.x.lineJoin = "round"; g.x.stroke();
+  if (fill) {
+    g.x.lineTo(pad + (g.w - 2 * pad) * (data[data.length - 1].t / SPAN), bot);
+    g.x.lineTo(pad, bot); g.x.closePath(); g.x.fillStyle = fill; g.x.fill();
+  }
+}
+
+function drawSim(sim) {
+  var g = ctxOf(document.getElementById("cRpm"));
+  grid(g, 3);
+  var want = sim.map(function (s) { return { t: s.t, v: s.duty < 0 ? 0 : steady(s.duty) }; });
+  curve(g, want, "v", RPM_MAX, "rgba(10,132,255,.55)", null);
+  curve(g, sim, "rpm", RPM_MAX, "#30b14f", "rgba(48,177,79,.12)");
+  var peak = sim.reduce(function (a, s) { return Math.max(a, s.rpm); }, 0);
+  g.x.fillStyle = "#9a9ea6"; g.x.font = "8px -apple-system,sans-serif"; g.x.textAlign = "left";
+  g.x.fillText(Math.round(peak) + " rpm at its fastest", 10, 18);
+
+  var h = ctxOf(document.getElementById("cSpl"));
+  grid(h, 3);
+  var loud = sim.map(function (s) { return { t: s.t, v: spl(s.rpm) }; });
+  curve(h, loud, "v", SPL_MAX, "#f08a12", "rgba(240,138,18,.12)");
+  var lo = SPL_MAX, hi = 0;
+  loud.forEach(function (s) { if (s.v > 1) { lo = Math.min(lo, s.v); } hi = Math.max(hi, s.v); });
+  h.x.fillStyle = "#9a9ea6"; h.x.font = "8px -apple-system,sans-serif"; h.x.textAlign = "left";
+  h.x.fillText(hi > 1 ? (hi - Math.min(lo, hi)).toFixed(0) + " dB between its quietest and loudest" : "silent", 10, 18);
+}
+
+var hot = -1;
+function render() {
+  var t = total();
+  SPAN = Math.max(1, t / 1000 + 2.2);
+  var sim = simulate(steps, P, 0.01);
+  drawDuty();
+  drawSim(sim);
+  document.getElementById("steps").value = text();
+  document.getElementById("cmd").textContent = 'be3600-fan play "' + text() + '"';
+  var w = document.getElementById("warn");
+  if (t > MAX_TOTAL_MS) w.textContent = "This holds the fan for " + (t / 1000).toFixed(1) + " s. be3600-fan will refuse anything over " + (MAX_TOTAL_MS / 1000) + " s.";
+  else if (steps.some(function (s) { return s[1] < 300; })) w.textContent = "Steps under about 300 ms never reach their speed, so they blur into the one before.";
+  else w.textContent = "";
+  w.style.color = t > MAX_TOTAL_MS ? "#d0402f" : "";
+}
+
+/* ---------------------------------------------------------------- editing on the chart */
+var cDuty = document.getElementById("cDuty"), drag = null;
+
+function hit(ev) {
+  var r = cDuty.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+  var pad = 8, t = 0, w = r.width - 2 * pad;
+  for (var i = 0; i < steps.length; i++) {
+    var x0 = pad + w * (t / SPAN), x1 = pad + w * ((t + steps[i][1] / 1000) / SPAN);
+    if (x >= x0 && x < x1) return { i: i, edge: x1 - x < 7, x: x, y: y, x0: x0 };
+    t += steps[i][1] / 1000;
+  }
+  return { i: -1, x: x, y: y };
+}
+cDuty.addEventListener("pointermove", function (ev) {
+  if (!drag) {
+    var h = hit(ev);
+    hot = h.i;
+    cDuty.style.cursor = h.i < 0 ? "default" : (h.edge ? "ew-resize" : "ns-resize");
+    render();
+    return;
+  }
+  var r = cDuty.getBoundingClientRect();
+  if (drag.edge) {
+    var secs = (ev.clientX - r.left - drag.x0) / (r.width - 16) * SPAN;
+    steps[drag.i][1] = Math.max(20, Math.min(MAX_TOTAL_MS, Math.round(secs * 1000 / 10) * 10));
+  } else {
+    var bot = +cDuty.getAttribute("height") - 14, top = 10;
+    var d = Math.round(DUTY_MAX * (bot - (ev.clientY - r.top)) / (bot - top));
+    steps[drag.i][0] = Math.max(0, Math.min(DUTY_MAX, d));
+  }
+  render();
+});
+cDuty.addEventListener("pointerdown", function (ev) {
+  var h = hit(ev);
+  if (h.i < 0) return;
+  push();
+  drag = h;
+  try { cDuty.setPointerCapture(ev.pointerId); } catch (e) {}
+});
+cDuty.addEventListener("pointerup", function () { drag = null; });
+cDuty.addEventListener("pointerleave", function () { hot = -1; render(); });
+cDuty.addEventListener("dblclick", function (ev) {
+  var h = hit(ev);
+  push();
+  if (h.i >= 0 && steps.length > 1) steps.splice(h.i, 1);
+  else steps.push([255, 400]);
+  render();
+});
+
+/* ---------------------------------------------------------------- hearing it */
+var ac = null, nodes = null;
+function noiseBuffer(ctx) {
+  var b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = b.getChannelData(0);
+  for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return b;
+}
+function stop() {
+  if (nodes) { try { nodes.src.stop(); nodes.osc.stop(); } catch (e) {} nodes = null; }
+  document.getElementById("stop").disabled = true;
+  document.getElementById("play").disabled = false;
+}
+function play() {
+  stop();
+  if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (ac.state === "suspended") ac.resume();
+  var sim = simulate(steps, P, 0.02), t0 = ac.currentTime + 0.06;
+
+  var src = ac.createBufferSource(); src.buffer = noiseBuffer(ac); src.loop = true;
+  var lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.7;
+  var body = ac.createBiquadFilter(); body.type = "peaking"; body.frequency.value = P.res; body.Q.value = 1.4; body.gain.value = 9;
+  var hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 120;
+  var g = ac.createGain(); g.gain.value = 0;
+  var osc = ac.createOscillator(); osc.type = "sawtooth";
+  var og = ac.createGain(); og.gain.value = 0;
+  var out = ac.createGain(); out.gain.value = P.vol;
+
+  src.connect(lp); lp.connect(body); body.connect(hp); hp.connect(g); g.connect(out);
+  osc.connect(og); og.connect(out); out.connect(ac.destination);
+
+  for (var i = 0; i < sim.length; i++) {
+    var s = sim[i], when = t0 + s.t, f = s.rpm / RPM_MAX;
+    var amp = spl(s.rpm) / (SPL_MAX || 1);
+    g.gain.setValueAtTime(Math.pow(Math.max(0, amp), 2.2), when);
+    lp.frequency.setValueAtTime(Math.max(180, 180 + P.bright * f), when);
+    var bpf = s.rpm / 60 * P.blades;
+    osc.frequency.setValueAtTime(Math.max(20, Math.min(ac.sampleRate / 3, bpf)), when);
+    og.gain.setValueAtTime(P.tone * Math.pow(Math.max(0, amp), 3), when);
+  }
+  var end = t0 + sim[sim.length - 1].t;
+  g.gain.setValueAtTime(0, end); og.gain.setValueAtTime(0, end);
+  src.start(t0); osc.start(t0); src.stop(end + 0.1); osc.stop(end + 0.1);
+  nodes = { src: src, osc: osc };
+  src.onended = stop;
+  document.getElementById("stop").disabled = false;
+  document.getElementById("play").disabled = true;
+}
+
+/* ---------------------------------------------------------------- the rest of the page */
+function toast(msg) {
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove("show"); }, 1700);
+}
+function name() { return (document.getElementById("name").value || "mychime").replace(/[^A-Za-z0-9._-]/g, "").slice(0, 32) || "mychime"; }
+
+document.getElementById("play").onclick = play;
+document.getElementById("stop").onclick = stop;
+document.getElementById("add").onclick = function () { push(); steps.push([steps.length % 2 ? 60 : 255, 500]); render(); };
+document.getElementById("undo").onclick = function () { if (history.length) { steps = JSON.parse(history.pop()); render(); } };
+document.getElementById("copy").onclick = function () {
+  var s = 'be3600-fan play "' + text() + '"';
+  if (navigator.clipboard) navigator.clipboard.writeText(s).then(function () { toast("copied"); }, function () { toast("copy it from the black box"); });
+  else toast("copy it from the black box");
+};
+document.getElementById("steps").addEventListener("change", function () { push(); steps = parse(this.value); render(); });
+
+document.getElementById("save").onclick = function () {
+  var body = "# be3600 fan chime: " + name() + "\n"
+           + "# " + (total() / 1000).toFixed(1) + " s. Put this in /etc/be3600-screen/chimes.d/" + name()
+           + " and play it with: be3600-fan chime " + name() + "\n"
+           + text() + "\n";
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
+  a.download = name() + ".chime";
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  toast("saved " + name() + ".chime");
+};
+document.getElementById("load").onclick = function () { document.getElementById("file").click(); };
+document.getElementById("file").addEventListener("change", function () {
+  var f = this.files && this.files[0];
+  if (!f) return;
+  var r = new FileReader();
+  r.onload = function () {
+    var lines = String(r.result).split(/\r?\n/).filter(function (l) { return l.trim() && l.trim()[0] !== "#"; });
+    var m = /chime:\s*([A-Za-z0-9._-]+)/.exec(String(r.result));
+    if (m) document.getElementById("name").value = m[1];
+    push(); steps = parse(lines.join(" ")); render();
+    toast("opened " + f.name);
+  };
+  r.readAsText(f);
+  this.value = "";
+});
+
+var P_UI = [["tauUp", "vUp", 1000, " s", "tauUp"], ["tauDn", "vDn", 1000, " s", "tauDn"], ["dead", "vDead", 1000, " s", "dead"],
+            ["bright", "vBright", 1, " Hz", "bright"], ["res", "vRes", 1, " Hz", "res"],
+            ["tone", "vTone", 100, "", "tone"], ["blades", "vBlades", 1, "", "blades"], ["vol", "vVol", 100, "", "vol"]];
+function syncUI() {
+  P_UI.forEach(function (u) {
+    var el = document.getElementById(u[0]);
+    el.value = Math.round(P[u[4]] * u[2]);
+    document.getElementById(u[1]).textContent = u[2] === 1000 ? P[u[4]].toFixed(2) + u[3]
+      : u[2] === 100 ? Math.round(P[u[4]] * 100) + "%" : Math.round(P[u[4]]) + u[3];
+  });
+}
+P_UI.forEach(function (u) {
+  document.getElementById(u[0]).addEventListener("input", function () {
+    P[u[4]] = +this.value / u[2];
+    syncUI(); render();
+  });
+});
+document.getElementById("reset").onclick = function () { P = JSON.parse(JSON.stringify(DEFAULTS)); syncUI(); render(); toast("back to the measured fan"); };
+
+var pc = document.getElementById("presets");
+PRESETS.forEach(function (p) {
+  var b = document.createElement("button");
+  b.innerHTML = "<b></b><small></small>";
+  b.querySelector("b").textContent = p[0];
+  b.querySelector("small").textContent = p[2];
+  b.onclick = function () { push(); steps = parse(p[1]); document.getElementById("name").value = p[0]; render(); };
+  pc.appendChild(b);
+});
+
+window.addEventListener("resize", render);
+syncUI();
+render();
+})();
+</script>
+</body>
+</html>

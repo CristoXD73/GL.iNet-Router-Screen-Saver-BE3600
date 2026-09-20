@@ -4,8 +4,12 @@
 # user typed: the two words come from the player's own code.
 #
 #   be3600-widget-action guest toggle|on|off     switch the guest Wi-Fi network
+#   be3600-widget-action chime good|warn|bad|info
+#                                                sound the cooling fan, if FAN_CHIME is on
 
 D="${BE3600_DATA:-/tmp/be3600-widgets}"
+CONF="${BE3600_CONF:-/etc/be3600-screen/config}"
+FAN="${BE3600_FAN:-/usr/sbin/be3600-fan}"
 
 guest_sections() { uci -q show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)\.guest='1'.*/\1/p"; }
 
@@ -34,7 +38,21 @@ guest() {
     ( wifi reload >/dev/null 2>&1 & )
 }
 
+# A banner on the screen can also be heard, if the owner asked for it. Off unless FAN_CHIME=1.
+chime() {
+    [ "$(sed -n "s/^FAN_CHIME=[\"']\{0,1\}\([^\"'#]*\).*/\1/p" "$CONF" 2>/dev/null | head -n 1)" = 1 ] || exit 0
+    [ -x "$FAN" ] || exit 0
+    case "$1" in
+        good) N=up ;;
+        warn) N=alert ;;
+        bad)  N=down ;;
+        *)    N=ping ;;
+    esac
+    "$FAN" chime "$N" >/dev/null 2>&1
+}
+
 case "$1" in
     guest) guest "$2" ;;
-    *) echo "usage: be3600-widget-action guest toggle|on|off" >&2; exit 1 ;;
+    chime) chime "$2" ;;
+    *) echo "usage: be3600-widget-action guest toggle|on|off  |  chime good|warn|bad|info" >&2; exit 1 ;;
 esac
