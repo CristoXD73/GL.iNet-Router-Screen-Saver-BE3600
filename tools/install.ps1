@@ -47,8 +47,7 @@ try {
         Write-Host ''
         Write-Box @(
             'Type your router admin password when asked.',
-            '(Same one you use on the router''s admin page.',
-            ' Nothing shows while you type - that is normal.)'
+            '(The same one as the router''s admin page.)'
         ) 'Yellow'
         Write-Host ''
 

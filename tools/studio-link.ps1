@@ -451,7 +451,7 @@ function Invoke-Send {
         Write-Step 'send' "Sending it to $ip"
         if (-not (Test-QuietLogin)) {
             Write-Host ''
-            Write-Box @('Type your router admin password here when asked.', '(Nothing shows while you type - that is normal.)') 'Yellow'
+            Write-Box @('Type your router admin password here when asked.') 'Yellow'
             Write-Host ''
             try { [Console]::Beep(880, 120) } catch {}
         }

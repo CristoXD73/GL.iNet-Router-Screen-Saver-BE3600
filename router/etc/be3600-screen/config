@@ -1,85 +1,85 @@
-# be3600-screensaver settings (plain shell syntax, sourced by the supervisor).
-# Restart after editing:  be3600-anim on
+# be3600-screensaver settings. Shell syntax, sourced by the supervisor.
+# Apply changes with:  be3600-anim on
 
-# Animation to play. Replace it with:  be3600-anim set /path/to/file.bea
+# ---- the animation ---------------------------------------------------------------------------
+
+# Replace with:  be3600-anim set /path/to/file.bea
 ANIMATION="/etc/be3600-screen/active.bea"
 
-# Seconds without a touch before the animation starts (0 = immediately).
+# Seconds without a touch before the screen saver takes over. 0 = at once.
 IDLE_SECONDS=10
 
-# While an animation is showing (native player): drag a finger along the strip and the
-# picture follows it, then slides to the next or previous saved animation (see
-# be3600-anim list); a single tap goes to the next one; a double-tap, or a swipe across
-# the strip, leaves the animation and shows the normal screen again.
-# A second tap within this many seconds of the first is a double-tap. Fractions are
-# fine. A shorter window makes a single tap switch sooner but leaves less time for the
-# second tap of a double-tap.
-DOUBLE_TAP_WINDOW_SECONDS=0.3
-
-# How long (milliseconds) a slide between animations takes.
-SLIDE_MS=280
-
-# If swiping goes the wrong way for you (the next animation should come in from the
-# right when you swipe left), set this to 1.
-SWIPE_INVERT=0
-
-# Which touchscreen axis runs along the strip: Y (the default) or X. Change it only if a swipe
-# along the strip is being taken for a swipe across it.
-TOUCH_LONG_AXIS=Y
-
-# Touchscreen device. Leave empty to find it automatically (the input device
-# whose name contains "touch"); set it only if autodetection picks the wrong one,
-# e.g. TOUCH_DEVICE="/dev/input/event1".
-TOUCH_DEVICE=""
-
-# Which player draws the animation. "auto" uses the native one (exact timing,
-# almost no CPU) when it is installed and falls back to the Lua one; "lua"
-# forces the Lua player, for example to compare the two.
+# Which player. "auto" prefers the native one and falls back to Lua; "lua" forces Lua.
 PLAYER_ENGINE="auto"
 
-# ---------------------------------------------------------------------------------------------
-# Pages: the screen can show more than animations. Swipe along the strip to move between them.
-# Change with:  be3600-anim pages          (lists them all)
-#               be3600-anim pages set "animations clock netspeed vitals"
+# ---- touch -----------------------------------------------------------------------------------
+
+# A second tap within this many seconds counts as a double-tap. Fractions allowed.
+# Shorter switches sooner on a single tap; longer gives more room for the second tap.
+DOUBLE_TAP_WINDOW_SECONDS=0.3
+
+# Milliseconds a slide between pages takes.
+SLIDE_MS=280
+
+# Set to 1 if swipe direction feels backwards.
+SWIPE_INVERT=0
+
+# Which touchscreen axis runs along the strip, Y or X. Change only if a swipe along the
+# strip is read as a swipe across it.
+TOUCH_LONG_AXIS=Y
+
+# Empty autodetects. Set it if the wrong device is picked, e.g. "/dev/input/event1".
+TOUCH_DEVICE=""
+
+# ---- pages -----------------------------------------------------------------------------------
+# Swipe along the strip to move between them.  be3600-anim pages  lists them.
 #
 #   animations  your saved animations       clock      big clock and date
 #   analog      an analog watch face        aurora     your traffic as drifting light
 #   netspeed    live speed graph            talkers    which device is using the internet
 #   vitals      CPU, memory, storage, temp  info       uptime, addresses
-#   clients     Wi-Fi devices and signal    doctor     where the trouble is (router/ISP/internet/names)
-#   internet    up/down and latency         usage      data used today / this month
-#   vpn         VPN tunnels                 health     one-glance "all fine?"
+#   clients     Wi-Fi devices and signal    doctor     router / ISP / internet / name lookups
+#   internet    up/down and latency         usage      data used today and this month
+#   vpn         VPN tunnels                 health     one glance: is everything fine
 #   pomodoro    focus timer (touch)         stopwatch  stopwatch (touch)
 #   message     be3600-anim say "..."       guest      guest Wi-Fi switch (hold)
 #   wifiqr      QR code to join a network   weather    needs WEATHER_LAT / WEATHER_LON
-#   custom      your scripts in /etc/be3600-screen/widgets.d  (or custom:NAME)
-# ---------------------------------------------------------------------------------------------
+#   custom      your scripts in /etc/be3600-screen/widgets.d, or custom:NAME
+#
 PAGES="animations"
 
-# Move to the next page by itself after this many seconds without a touch (0 = never).
+# Advance to the next page after this many seconds without a touch. 0 = never.
 AUTOPLAY_SECONDS=0
 
-# Banners over whatever is showing: internet down/back, a device joined, VPN changes, a timer
-# finishing, the router getting hot, the data cap reached. 0 turns them off.
+# Show a page at a set time, e.g. SCHEDULE="22:00=clock 07:00=animations"
+SCHEDULE=""
+
+# ---- alerts ----------------------------------------------------------------------------------
+
+# Banners over whatever is showing: internet down or back, a device joined, a VPN change,
+# a timer finishing, the router getting hot, the data cap reached. 0 turns them off.
 ALERTS=1
 
-# Hear the banners as well as see them. The router has one moving part -- the cooling fan --
-# and a fan makes a tone at whatever speed it is spinning, so a short rise or fall in speed
-# is an audible chime. It is off by default; it is also skipped whenever the router is warm,
-# because cooling comes first. Try the chimes with:  be3600-fan chimes
+# Play the banner on the cooling fan as well as showing it. The fan is the only moving part
+# the router has, and its speed is the only thing it can be told, so a chime is an engine
+# revving rather than a tune. Skipped above 70C, because cooling wins.  be3600-fan chimes
 FAN_CHIME=0
 
-# ...but not during these hours. Empty means any time.
+# Hours to stay silent. Empty means any time.
 FAN_CHIME_QUIET="22:00-08:00"
 
-# Night mode: between these times the screen dims to NIGHT_BRIGHTNESS (0 = dark, up to 11).
-# A touch wakes it for 20 seconds. Leave NIGHT_START empty to turn it off.
+# ---- brightness ------------------------------------------------------------------------------
+
+# Between these times the screen dims to NIGHT_BRIGHTNESS, 0 (dark) to 11. A touch wakes it
+# for 20 seconds. Empty NIGHT_START turns night mode off.
 NIGHT_START=""
 NIGHT_END=""
 NIGHT_BRIGHTNESS=1
 
-# Show a particular page at particular times, e.g.  SCHEDULE="22:00=clock 07:00=animations"
-SCHEDULE=""
+# Brightness outside those hours, 0 to 11. -1 leaves it alone.
+DAY_BRIGHTNESS=-1
+
+# ---- what the pages show ---------------------------------------------------------------------
 
 # Clock: 1 = 24-hour, 0 = 12-hour with AM/PM.
 CLOCK_24H=1
@@ -87,25 +87,25 @@ CLOCK_24H=1
 # Speed graph units: "bits" (Mb/s) or "bytes" (MB/s).
 SPEED_UNITS="bits"
 
-# Data page: a monthly allowance in GB adds a bar and an alert when it is used up (0 = none).
+# A monthly allowance in GB adds a bar to the data page and an alert when it runs out. 0 = none.
 DATA_CAP_GB=0
 
-# Internet and doctor pages: what to ping (an address). Replies are only timed; nothing else is sent.
+# What the internet and doctor pages ping. Replies are timed; nothing else is sent.
 PING_TARGET="1.1.1.1"
 
-# Doctor page: the name it looks up to check that name lookups work.
+# The name the doctor page looks up to test name resolution.
 DNS_PROBE="openwrt.org"
 
-# Pomodoro timer lengths in minutes.
+# Pomodoro lengths, in minutes.
 POMODORO_FOCUS_MIN=25
 POMODORO_SHORT_MIN=5
 POMODORO_LONG_MIN=15
 
-# Wi-Fi QR page: which network (a section name from /etc/config/wireless). Empty = the guest network.
-# The page shows the password as a QR code to anyone who looks at the screen, so it is opt-in.
+# Which network the QR page offers: a section name from /etc/config/wireless, or empty for
+# the guest network. It shows the password to anyone looking at the screen, so it is opt-in.
 WIFI_QR_SECTION=""
 
-# Weather page: your location (open-meteo.com is asked for the forecast, nothing else is sent).
+# Weather. open-meteo.com is asked for the forecast; nothing else is sent.
 WEATHER_LAT=""
 WEATHER_LON=""
 WEATHER_UNITS="C"

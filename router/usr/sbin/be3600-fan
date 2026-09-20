@@ -4,23 +4,21 @@
 #
 #   be3600-fan status              what the fan is doing right now
 #   be3600-fan chimes              the chimes it knows
-#   be3600-fan chime NAME          play one (ping, up, down, alert, ok, done, boot, rev, siren,
-#                                  or one of your own from /etc/be3600-screen/chimes.d)
-#   be3600-fan play "STEPS"        your own: "120:300 180:300 240:500" is duty:milliseconds
-#   be3600-fan spin PERCENT        hold a speed (0-100) until you stop it
-#   be3600-fan spin auto           give the fan back to the temperature daemon
+#   be3600-fan chime NAME          ping, up, down, alert, rev, or one of yours from chimes.d
+#   be3600-fan play "STEPS"        duty:milliseconds, e.g. "120:300 180:300 240:500"
+#   be3600-fan spin PERCENT        hold a speed, 0-100
+#   be3600-fan spin auto           hand the fan back to the temperature daemon
 #
-# Do not expect a tune. The only thing the fan can be told is how fast to spin, and on this
-# router what you hear at any speed is broadband rush, not a note -- the blade-passing tone is
-# buried in it. Changing speed is slow too: most of a second to get anywhere.
+# Not a tune. Speed is the only thing the fan can be told, and at any speed what you hear is
+# broadband rush rather than a note: the blade-passing tone is buried in it. Speed changes are
+# slow, most of a second. So a chime is an engine -- an idle, a stab of throttle, something
+# held, then letting it die. A blip is a notice; a blip and a pull away means something came
+# back; falling away in stages means something went; three hard stabs means look at the screen.
 #
-# So a chime here is an engine, not a melody: an idle, a stab of throttle, something held, and
-# then letting it die. One blip is a notice, a blip and a pull away means something came back,
-# falling away in stages means something went; three hard stabs means look at the screen.
+# Design your own in Fan Studio and drop the .chime file in /etc/be3600-screen/chimes.d.
 #
-# It only ever writes a PWM duty cycle, the same thing the temperature daemon writes,
-# and it always puts the old value back -- including if it is killed. It refuses to
-# play at all when the router is warm, so a chime can never come at the cost of cooling.
+# This writes one thing, the PWM duty cycle, which is what the temperature daemon writes too,
+# and always restores the previous value, including when killed. It refuses above 70C.
 
 CONF="${BE3600_CONF:-/etc/be3600-screen/config}"
 HW="${BE3600_HWMON:-/sys/class/hwmon/hwmon0}"
@@ -34,9 +32,11 @@ MAX_TOTAL_MS=12000        # a chime may not hold the fan for longer than this
 MIN_DUTY=90               # below this the fan is too quiet to hear a difference
 MAX_DUTY=255
 
-conf_get() {
-    sed -n "s/^$1=[\"']\{0,1\}\([^\"'#]*\).*/\1/p" "$CONF" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//'
-}
+# conf_get, shared with the other scripts. Beside this one when installed, ../lib in the repo.
+COMMON="$(dirname "$0")/../lib/be3600/common.sh"
+[ -r "$COMMON" ] || COMMON="/usr/lib/be3600/common.sh"
+# shellcheck source=router/usr/lib/be3600/common.sh
+. "$COMMON"
 
 have_fan() { [ -w "$HW/pwm1" ]; }
 duty_now() { cat "$HW/pwm1" 2>/dev/null || echo 0; }
@@ -78,15 +78,11 @@ chime_steps() {
         up|good)    echo "60:600 255:600 60:450 255:1700" ;;                          # a blip, then pull away
         down|bad)   echo "255:1500 150:500 100:500 60:700" ;;                         # on the gas, then dying
         alert|warn) echo "60:450 255:550 60:400 255:550 60:400 255:900" ;;            # three hard stabs
-        ok)         echo "60:500 255:1800" ;;                                         # one long pull
-        done)       echo "60:600 255:600 60:450 255:600 60:450 255:1900" ;;           # rev twice, then away
-        boot)       echo "60:500 100:350 140:350 180:350 220:350 255:1800" ;;         # spooling up
         # A rev cannot open with a punch: from a standstill the rotor needs half a second to break
         # away and another 1.6 s to get near full, so the first two seconds are the engine starting,
         # and only then is there something to stab at. Two deep cuts with a hard stab back out of
         # each, a short catch of breath, then the long pull away.
         rev)        echo "255:2200 60:550 255:900 36:500 255:1000 90:200 255:2600" ;;
-        siren)      echo "90:500 255:600 90:500 255:600 90:500 255:600 90:600" ;;     # in and out, never silent
         *)
             # anything else is one of your own, saved from Fan Studio into chimes.d
             case "$1" in ''|*[!A-Za-z0-9._-]*|.*) return 1 ;; esac
@@ -98,7 +94,7 @@ chime_steps() {
     esac
 }
 
-BUILTIN_NAMES="ping up down alert ok done boot rev siren"
+BUILTIN_NAMES="ping up down alert rev"
 chime_names() {
     echo "$BUILTIN_NAMES" | tr ' ' '\n'
     for F in "$CHIMES"/*; do

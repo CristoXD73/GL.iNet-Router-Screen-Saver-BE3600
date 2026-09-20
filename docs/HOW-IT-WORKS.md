@@ -140,10 +140,23 @@ Treat the mechanism as a hypothesis; the fix is what was verified.
 
 ## Screen pages
 
-The native player draws the pages itself (`native/gfx.inc`: anti-aliased shapes and Inter type; `widgets.inc`,
-`pages2.inc`, `pages3.inc`: the pages; `qr.inc`: a QR encoder). A page is a function that draws a 284 x 76 picture
-the way you look at the strip; it is turned into the display's layout when it is sent to the screen. Pages and
-animations are all "slots" in one carousel, so the drag-and-slide of the gestures works between any two of them.
+The native player draws the pages itself. A page is a function that draws a 284 x 76 picture the way you look at
+the strip; it is turned into the display's layout when it is sent to the screen. Pages and animations are all
+"slots" in one carousel, so the drag-and-slide of the gestures works between any two of them.
+
+`native/` is included by `be3600-player.c` in dependency order, each file named after what is in it:
+
+| | |
+|---|---|
+| `draw.inc` | anti-aliased shapes, gradients and Inter type, onto a 284 x 76 canvas |
+| `sample.inc` | the live numbers, and the files `be3600-widgetd` writes |
+| `pages_basic.inc` | clock, network speed, vitals, router info |
+| `pages_network.inc` | clients, internet, data usage, VPN, health |
+| `qr.inc` | a QR encoder, for the Wi-Fi page |
+| `pages_touch.inc` | alerts, and the pages a touch does something to |
+| `pages_extra.inc` | analog, aurora, doctor, talkers |
+| `pages.inc` | the table of them all |
+| `hello.inc` | the welcome after installing |
 
 * **Live numbers** (CPU, memory, storage, temperature, speed, data used) come from `/proc` and `/sys` once a second.
 * **Collected data** (ping history, Wi-Fi clients, VPN, guest network, QR details, weather, custom scripts) is written

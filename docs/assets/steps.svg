@@ -41,6 +41,6 @@
     <circle class="num" cx="34" cy="34" r="16"/><text class="n" x="34" y="40">3</text>
     <text class="h" x="62" y="40">Enter your password</text>
     <text class="p" x="24" y="76">Your router's admin password.</text>
-    <text class="p" x="24" y="98">Nothing shows as you type.</text>
+
   </g>
 </svg>

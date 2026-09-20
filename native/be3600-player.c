@@ -462,12 +462,14 @@ static void slide_between(const uint8_t *other, int from, int to, unsigned ms)
  * The screen widgets (drawing, live numbers, QR codes, every page), then the carousel of pages
  * ------------------------------------------------------------------------ */
 
-#include "widgets.inc"
-#include "pages2.inc"
-#include "qr.inc"
-#include "pages3.inc"
-#include "pages4.inc"
-#include "hello.inc"
+#include "sample.inc"        /* live numbers, and the files the helper writes */
+#include "pages_basic.inc"   /* clock, network speed, vitals, router info     */
+#include "pages_network.inc" /* clients, internet, usage, VPN, health         */
+#include "qr.inc"            /* the QR encoder, for the Wi-Fi page            */
+#include "pages_touch.inc"   /* alerts, timers, message, guest, weather, ...  */
+#include "pages_extra.inc"   /* analog, aurora, doctor, talkers               */
+#include "pages.inc"         /* the table of them all                          */
+#include "hello.inc"         /* the welcome after installing                   */
 
 /* Settings: plain KEY=value lines of the config file (the same file the supervisor reads). */
 static const char *cfg_file = "/etc/be3600-screen/config";

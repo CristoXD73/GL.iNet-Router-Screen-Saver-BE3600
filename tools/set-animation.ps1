@@ -77,8 +77,7 @@ while ($true) {
     Write-Step 'send' "Sending it to $ip"
     Write-Host ''
     Write-Box @(
-        'Type your router admin password when asked.',
-        '(Nothing shows while you type - that is normal.)'
+        'Type your router admin password when asked.'
     ) 'Yellow'
     Write-Host ''
 

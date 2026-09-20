@@ -35,22 +35,21 @@ admin password.
 
 </div>
 
-Design an animation there (colour scenes, robot eyes, or your own GIF). The page
+Design an animation there: colour scenes, robot eyes, or your own GIF. The page
 has a **Download Studio Link** button.
 
-**2. Download Studio Link and double-click it** (Windows: the `.cmd` file; Mac /
-Linux: `python3 studio-link.py`). It's a single file, and it does the rest:
+**2. Download Studio Link and double-click it.** Windows: the `.cmd` file. Mac /
+Linux: `python3 studio-link.py`. One file, which:
 
-* finds your router by itself,
-* asks for the router's admin password **once** (*nothing shows while you type,
-  that's normal*),
-* **puts the screen saver on the router** if it isn't there yet (press Enter),
-* offers to **remember this computer** (locked with a passphrase only you can open), so you never type the password again,
-* and opens Motion Studio, already connected.
+* finds your router,
+* asks for its admin password once,
+* installs the screen saver if the router does not have it,
+* offers to remember this computer, encrypted with a passphrase you choose,
+* opens Motion Studio, connected.
 
-After that, **Compile** in Motion Studio sends your animation to the router
-straight away, and the three slots on the page show what's on it. That's it: the
-animation shows up on the screen after a few idle seconds and survives reboots.
+**Compile** then sends your animation to the router, and the three slots on the
+page show what is on it. The animation appears after a few idle seconds and
+survives reboots.
 
 ### Step by step
 
@@ -226,11 +225,11 @@ PLAYER_ENGINE="auto"            # "auto" = fast native player when installed; "l
 ## Screen pages: more than animations
 
 Swipe along the strip and the picture follows your finger to the next **page**. Besides your animations the
-screen can show live pages in a clean, dark, rounded style (the type is Inter, drawn smoothly by the router itself):
+screen shows live pages, set in Inter and rendered by the router:
 
 <img src="docs/assets/pages.png" alt="The screen pages: clock, network speed, vitals rings, router info, Wi-Fi clients, internet, data usage, VPN, health, Pomodoro timer, stopwatch, message, guest Wi-Fi switch, Wi-Fi QR code, weather and a custom page" width="640">
 
-Nothing changes until you choose pages. On the router:
+Pages are off until you choose them:
 
 ```sh
 be3600-anim pages                                            # the list, with what each one is
@@ -278,57 +277,49 @@ All settings are documented in `/etc/be3600-screen/config`.
 <details>
 <summary>Hearing the router: chimes on the cooling fan</summary>
 
-The BE3600 has no speaker and no LEDs, but it does have a fan, and a fan can be told how fast to
-spin. `be3600-fan` uses that as a doorbell.
+The BE3600 has no speaker and no LEDs. It does have a cooling fan, and a fan can be told how fast
+to spin, so `be3600-fan` uses it as a doorbell.
 
-Be clear about what it is not. It is not a tune. A fan's blade-passing tone is completely buried
-in broadband rush on this router, so **there is no pitch to play with** -- pitched jingles were
-tried and they are indistinguishable from a draught of air.
+Not a tune. The blade-passing tone is buried in broadband rush on this router, so **there is no
+pitch to play with**: pitched jingles were tried and are indistinguishable from a draught of air.
 
-What does work is an engine. Every chime here is an idle at low speed, a stab of throttle, something
-held, and then letting it die. The idle is the trick: from a standstill the rotor wastes half a second
-breaking away and the stab lands against silence, which reads as one vague rush; from an idle floor it
-already has momentum, so the stab arrives in time and you hear it against a running engine. Nothing
-under about 400 ms is worth asking for.
+An engine works. Each chime is an idle, a stab of throttle, something held, then letting it die.
+The idle is the trick. From a standstill the rotor spends half a second breaking away and the stab
+lands against silence, which reads as one vague rush; from an idle floor it already has momentum,
+so the stab arrives in time and lands against a running engine. Under 400 ms is not worth asking for.
 
 ```
-be3600-fan chimes            what it knows: ping, up, down, alert, ok, done, boot, rev, siren
+be3600-fan chimes            ping, up, down, alert, rev
 be3600-anim chime rev        hear one
-be3600-fan play "60:800 255:700 60:600 255:1800"     your own, as duty:milliseconds
+be3600-fan play "60:600 255:600 60:450 255:1700"     duty:milliseconds
 be3600-fan spin 60           hold a speed; "spin auto" hands it back
 ```
 
-Set `FAN_CHIME=1` and every banner is heard as well as seen: a blip and a pull away when something
-comes back, a wind-down in stages when it goes, three hard stabs for a warning.
-`FAN_CHIME_QUIET="22:00-08:00"` keeps it silent overnight.
+`FAN_CHIME=1` plays a chime with every banner: a blip and a pull away when something comes back, a
+wind-down in stages when it goes, three hard stabs for a warning. `FAN_CHIME_QUIET="22:00-08:00"`
+keeps the nights quiet.
 
-The installer finishes with `be3600-anim hello`, which is the two eyes from Motion Studio's logo
-waking up on the strip, looking around and blinking, while the fan revs underneath them -- the eyes
-widen on each stab of throttle and open out on the long pull. Run it yourself any time:
+The installer ends with `be3600-anim hello`: the two eyes from Motion Studio's logo wake on the
+strip, look around and blink while the fan revs under them, widening on each stab of throttle and
+opening out on the long pull. It takes no animation and no settings, and a router without a fan
+gets the eyes on their own.
 
-```
-be3600-anim hello
-```
+Cooling wins. Nothing plays above 70 °C, the previous fan speed is always restored even if the
+command is killed, and no chime may hold the fan longer than twelve seconds.
 
-It needs no animation and no settings; a router with no fan just gets the eyes.
-
-Cooling always wins: nothing plays above 70 °C, the fan is put back exactly as it was found even
-if the command is killed, and no chime may hold it for longer than six seconds. Routers without
-a controllable fan simply say so.
-
-**[Fan Studio](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/fan.html)** is
-for designing your own. Drag the bars, and it shows you what the fan will actually do: the speed curve
-is simulated from measurements taken off this router's own tachometer (spin-up 0.85 s, coast-down
-0.75 s, half a second of dead time before a stopped rotor breaks away), so you can see a 200 ms blip
-fail to reach full speed instead of finding out by ear. It plays an approximation through your
-speakers, and saves a `.chime` file. Drop that in `/etc/be3600-screen/chimes.d/` and it plays by name:
+**[Fan Studio](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/fan.html)**
+designs your own. Drag the bars and it shows what the fan will actually do: the speed curve is
+simulated from this router's own tachometer -- spin-up 0.85 s, coast-down 0.75 s, half a second of
+dead time before a stopped rotor breaks away -- so a 200 ms blip visibly fails to reach full speed
+instead of you finding out by ear. It plays an approximation through your speakers and saves a
+`.chime` file. Drop that in `/etc/be3600-screen/chimes.d/`:
 
 ```
 be3600-fan chime mychime
 ```
 
-`tools/sound_to_fan.py` turns a short WAV into fan steps, which is how the 1-UP jingle was tried --
-and how it was established that melodies are out of reach.
+`tools/sound_to_fan.py` maps a short WAV onto the fan. It is how the 1-UP jingle was tried, and how
+melodies were ruled out.
 
 </details>
 

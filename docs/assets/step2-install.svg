@@ -66,7 +66,7 @@
     <circle class="call" cx="26" cy="26" r="14"/><text class="n" x="26" y="31" style="font-size:15px">1</text>
     <text class="ch" x="50" y="31">Type the password</text>
     <text class="p" x="16" y="54">Your router's admin password.</text>
-    <text class="p" x="16" y="72">Nothing shows as you type.</text>
+
   </g>
   <g transform="translate(640,228)">
     <rect class="card" width="230" height="80" rx="14"/>

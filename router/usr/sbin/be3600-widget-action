@@ -8,7 +8,6 @@
 #                                                sound the cooling fan, if FAN_CHIME is on
 
 D="${BE3600_DATA:-/tmp/be3600-widgets}"
-CONF="${BE3600_CONF:-/etc/be3600-screen/config}"
 FAN="${BE3600_FAN:-/usr/sbin/be3600-fan}"
 
 guest_sections() { uci -q show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)\.guest='1'.*/\1/p"; }
@@ -40,7 +39,11 @@ guest() {
 
 # A banner on the screen can also be heard, if the owner asked for it. Off unless FAN_CHIME=1.
 chime() {
-    [ "$(sed -n "s/^FAN_CHIME=[\"']\{0,1\}\([^\"'#]*\).*/\1/p" "$CONF" 2>/dev/null | head -n 1)" = 1 ] || exit 0
+    COMMON="$(dirname "$0")/../lib/be3600/common.sh"
+    [ -r "$COMMON" ] || COMMON="/usr/lib/be3600/common.sh"
+    # shellcheck source=router/usr/lib/be3600/common.sh
+    . "$COMMON"
+    [ "$(conf_get FAN_CHIME)" = 1 ] || exit 0
     [ -x "$FAN" ] || exit 0
     case "$1" in
         good) N=up ;;

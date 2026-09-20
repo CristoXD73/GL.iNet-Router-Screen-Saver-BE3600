@@ -354,7 +354,7 @@ def send_file(data, name):
     say("send", "Sending it to %s" % ip)
     if not quiet_login():
         print("\n  Type your router admin password here when asked.\n"
-              "  (Nothing shows while you type - that is normal.)\a\n", flush=True)
+              "\a\n", flush=True)
     # A fresh private temp name on the router each time (never a fixed, guessable path).
     remote = "T=$(mktemp /tmp/be3600-new.XXXXXX) && cat > $T && be3600-anim set $T %s; R=$?; rm -f $T; exit $R" % name
 

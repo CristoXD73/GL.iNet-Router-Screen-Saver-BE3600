@@ -77,7 +77,7 @@ def main():
     print("== it knows the chimes")
     root, hw, env = make_env()
     code, out = run(env, "chimes")
-    check(code == 0 and "siren" in out and "alert" in out, "chimes are listed by name", out)
+    check(code == 0 and "rev" in out and "alert" in out, "chimes are listed by name", out)
 
     print("== a chime is a series of speeds, and the fan is left as it was found")
     code, out, steps = trace(env, hw, "chime", "up", "--force")
@@ -91,9 +91,6 @@ def main():
 
     code, out, steps = trace(env, hw, "chime", "down", "--force")
     check(steps[0] == "255" and steps[1:4] == ["150", "100", "60"], "'down' dies away in stages", str(steps))
-
-    code, out, steps = trace(env, hw, "chime", "boot", "--force")
-    check(steps[:3] == ["60", "100", "140"] and "255" in steps, "'boot' spools up to full", str(steps))
 
     code, out, steps = trace(env, hw, "chime", "rev", "--force")
     check(steps == ["255", "60", "255", "36", "255", "90", "255", "0"],

@@ -1,6 +1,6 @@
 /*
- * pages3.inc -- alerts, the pages you can touch (timers, message board, guest Wi-Fi switch), the Wi-Fi QR code,
- * weather, custom-script pages, and the table of all pages. Included by be3600-player.c after pages2.inc.
+ * pages_touch.inc -- alerts, the pages you can touch (timers, message board, guest Wi-Fi switch), the Wi-Fi QR code,
+ * weather and custom-script pages. Included by be3600-player.c after qr.inc.
  */
 
 /* ---------------------------------------------------------------- alerts (banners that interrupt the current page) */

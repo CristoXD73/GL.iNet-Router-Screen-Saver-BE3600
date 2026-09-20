@@ -1,7 +1,7 @@
 /*
- * gfx.inc -- the drawing layer of the screen pages: a 284 x 76 canvas (the strip as you look at it: x to the right,
+ * draw.inc -- the drawing layer of the screen pages: a 284 x 76 canvas (the strip as you look at it: x to the right,
  * y down) with anti-aliased shapes, rounded cards, pills, activity rings, gradient graphs and smooth proportional
- * text. The canvas is turned into the display's own layout by cv_to_frame(). Included by widgets.inc.
+ * text. The canvas is turned into the display's own layout by cv_to_frame(). Included by sample.inc.
  */
 
 #include <ctype.h>

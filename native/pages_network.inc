@@ -1,6 +1,6 @@
 /*
- * pages2.inc -- widget pages that show what the helper be3600-widgetd collects (Wi-Fi clients, internet health,
- * VPN) or that keep books themselves (data usage, overall health). Included by be3600-player.c after widgets.inc.
+ * pages_network.inc -- widget pages that show what the helper be3600-widgetd collects (Wi-Fi clients, internet health,
+ * VPN) or that keep books themselves (data usage, overall health). Included by be3600-player.c after pages_basic.inc.
  */
 
 /* ---------------------------------------------------------------- page: Wi-Fi clients */

@@ -40,6 +40,12 @@ RESERVE_KB=20480          # always leave this much free on the router
 MAX_ANIMS=3               # the library holds at most this many animations
 MAX_LOOP_S=25             # and none may loop for longer than this many seconds
 
+# conf_get and conf_set, shared with the other scripts.
+COMMON="$(dirname "$0")/../lib/be3600/common.sh"
+[ -r "$COMMON" ] || COMMON="/usr/lib/be3600/common.sh"
+# shellcheck source=router/usr/lib/be3600/common.sh
+. "$COMMON"
+
 usage() {
     sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
@@ -374,17 +380,6 @@ page_ok() {   # a page name we know
     return 1
 }
 
-conf_get() {
-    sed -n "s/^$1=[\"']\{0,1\}\([^\"'#]*\).*/\1/p" "$CONF" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//'
-}
-
-conf_set() {   # KEY VALUE: replace the line (or add it); the value is written in double quotes
-    if grep -q "^$1=" "$CONF" 2>/dev/null; then
-        sed "s|^$1=.*|$1=\"$2\"|" "$CONF" > "$CONF.new" && mv "$CONF.new" "$CONF"
-    else
-        echo "$1=\"$2\"" >> "$CONF"
-    fi
-}
 
 pages_now() { P="$(conf_get PAGES)"; echo "${P:-animations}"; }
 

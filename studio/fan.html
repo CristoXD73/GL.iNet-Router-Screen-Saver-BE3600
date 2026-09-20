@@ -4,27 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- This page loads nothing from anywhere else and talks to nothing. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>BE3600 Fan Studio</title>
+<link rel="stylesheet" href="shared.css">
 <style>
-:root{
-  --bg:#edf0f4;--glass:rgba(255,255,255,.72);--text:#111318;--muted:#777b84;--line:rgba(18,21,29,.08);
-  --shadow:0 24px 72px rgba(28,34,48,.12),0 5px 18px rgba(28,34,48,.06);
-  --blue:#0a84ff;--green:#30b14f;--orange:#f08a12;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif
-}
-*{box-sizing:border-box}
 html,body{margin:0;width:100%;min-height:100%}
-body{background:radial-gradient(circle at 12% 0%,rgba(98,181,255,.16),transparent 28%),
-  radial-gradient(circle at 87% 4%,rgba(171,139,255,.15),transparent 25%),var(--bg);color:var(--text);padding:14px}
-button,input,select,textarea{font:inherit}
-.glass{background:var(--glass);border:1px solid rgba(255,255,255,.75);backdrop-filter:blur(28px) saturate(145%);
-  -webkit-backdrop-filter:blur(28px) saturate(145%);box-shadow:var(--shadow)}
+body{padding:14px}
 .topbar{border-radius:22px;padding:13px 16px;display:flex;align-items:center;gap:13px;flex-wrap:wrap}
-.mark{width:40px;height:40px;border-radius:14px;background:#111318;display:grid;place-items:center;flex:none}
-.mark i{display:block;width:17px;height:17px;border:2.5px solid #fff;border-radius:50%;border-right-color:transparent;border-bottom-color:transparent;animation:spin 1.6s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.mark i{animation-duration:6s}}
 .brand strong{display:block;font-size:15px;letter-spacing:-.02em}
 .brand small{display:block;font-size:8px;color:var(--muted);margin-top:2px}
 .spacer{flex:1}
@@ -58,9 +44,6 @@ select,input[type=text]{width:100%;height:32px;border:0;border-radius:10px;paddi
 .presets button b{display:block;font-size:10px}
 .presets button small{display:block;font-size:7.5px;color:var(--muted);margin-top:2px}
 .note{font-size:8px;color:var(--muted);line-height:1.5;margin-top:11px}
-.toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,18px);opacity:0;background:rgba(17,19,24,.94);
-  color:#fff;border-radius:11px;padding:9px 13px;font-size:10px;font-weight:700;pointer-events:none;transition:.2s}
-.toast.show{opacity:1;transform:translate(-50%,0)}
 .legend{display:flex;gap:12px;font-size:8px;color:var(--muted);margin:6px 2px 0}
 .legend i{display:inline-block;width:9px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
 </style>
@@ -68,7 +51,7 @@ select,input[type=text]{width:100%;height:32px;border:0;border-radius:10px;paddi
 <body>
 
 <div class="topbar glass">
-  <div class="mark"><i></i></div>
+  <div class="mark" aria-hidden="true"><div class="pair"><i class="bot-eye"></i><i class="bot-eye"></i></div></div>
   <div class="brand"><strong>Fan Studio</strong><small>design a chime for the BE3600's cooling fan</small></div>
   <div class="spacer"></div>
   <button class="btn dark" id="play">Hear it</button>
@@ -134,11 +117,11 @@ select,input[type=text]{width:100%;height:32px;border:0;border-radius:10px;paddi
   </aside>
 </main>
 
-<div class="toast" id="toast"></div>
-
+<script src="shared.js"></script>
 <script>
 (function () {
 "use strict";
+var toast = window.Studio.toast;
 
 /* ---------------------------------------------------------------- the fan, as measured on a BE3600 */
 var CAL = [[36,1096],[60,1759],[90,2711],[100,3118],[115,3349],[120,3432],[130,3702],[145,3946],
@@ -189,7 +172,7 @@ var PRESETS = [
   ["up",      "60:600 255:600 60:450 255:1700", "a blip, then pull away"],
   ["down",    "255:1500 150:500 100:500 60:700", "on the gas, then dying"],
   ["alert",   "60:450 255:550 60:400 255:550 60:400 255:900", "three hard stabs"],
-  ["boot",    "60:500 100:350 140:350 180:350 220:350 255:1800", "spooling up"],
+  ["ping",    "60:500 255:800", "one blip"],
   ["slam",    "0:400 255:2200", "from silence: hear how it blurs"]
 ];
 var steps = parse(PRESETS[0][1]), history = [];
@@ -402,11 +385,6 @@ function play() {
 }
 
 /* ---------------------------------------------------------------- the rest of the page */
-function toast(msg) {
-  var t = document.getElementById("toast");
-  t.textContent = msg; t.classList.add("show");
-  clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove("show"); }, 1700);
-}
 function name() { return (document.getElementById("name").value || "mychime").replace(/[^A-Za-z0-9._-]/g, "").slice(0, 32) || "mychime"; }
 
 document.getElementById("play").onclick = play;
@@ -414,9 +392,7 @@ document.getElementById("stop").onclick = stop;
 document.getElementById("add").onclick = function () { push(); steps.push([steps.length % 2 ? 60 : 255, 500]); render(); };
 document.getElementById("undo").onclick = function () { if (history.length) { steps = JSON.parse(history.pop()); render(); } };
 document.getElementById("copy").onclick = function () {
-  var s = 'be3600-fan play "' + text() + '"';
-  if (navigator.clipboard) navigator.clipboard.writeText(s).then(function () { toast("copied"); }, function () { toast("copy it from the black box"); });
-  else toast("copy it from the black box");
+  window.Studio.copy('be3600-fan play "' + text() + '"', "copy it from the black box");
 };
 document.getElementById("steps").addEventListener("change", function () { push(); steps = parse(this.value); render(); });
 

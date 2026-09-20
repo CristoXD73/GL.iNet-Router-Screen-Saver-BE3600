@@ -23,8 +23,7 @@ Most fixes below are commands you type on the router. To get there:
 
 3. The first time, it asks *"Are you sure you want to continue connecting?"*.
    Type `yes` and press Enter.
-4. Type your router's **admin password** and press Enter. *Nothing shows as you
-   type. That is normal.*
+4. Type your router's **admin password** and press Enter.
 5. When you see a prompt ending in `#`, you are on the router. Type `exit` to
    leave.
 
