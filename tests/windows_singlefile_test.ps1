@@ -24,7 +24,7 @@ $p = Start-Process -FilePath cmd.exe -ArgumentList '/c', "`"$cmdFile`"", '-Port'
 $token = $null
 for ($i = 0; $i -lt 40 -and -not $token; $i++) {
     Start-Sleep -Milliseconds 500
-    if (Test-Path "$w\out.txt") { $m = [regex]::Match((Get-Content "$w\out.txt" -Raw), '#link=([A-Za-z0-9_-]+)'); if ($m.Success) { $token = $m.Groups[1].Value } }
+    if (Test-Path "$w\out.txt") { $m = [regex]::Match((@(Get-Content "$w\out.txt") -join "`n"), '#link=([A-Za-z0-9_-]+)'); if ($m.Success) { $token = $m.Groups[1].Value } }
 }
 Check ($token -and $token.Length -ge 30) 'the single-file download starts and prints a pairing link with a long secret token'
 if (-not $token) { Get-Content "$w\out.txt", "$w\err.txt" -ErrorAction SilentlyContinue; Stop-Process -Id $p.Id -Force; exit 1 }
