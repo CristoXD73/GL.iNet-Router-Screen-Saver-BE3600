@@ -13,6 +13,7 @@
 html,body{margin:0;width:100%;height:100%;overflow:hidden}
 .app{width:100%;height:100%;padding:14px;display:flex;flex-direction:column;gap:12px}
 .topbar{height:68px;flex:none;border-radius:23px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 15px;z-index:30}
+.brand-row{display:flex;align-items:center;gap:12px;min-width:0}
 .brand{display:flex;align-items:center;gap:11px}.brand strong{font-size:15px;letter-spacing:-.02em}
 .engine-tabs{justify-self:center;display:flex;gap:3px;padding:4px;border-radius:13px;background:rgba(255,255,255,.56);box-shadow:inset 0 0 0 1px var(--line)}.engine-tabs button{border:0;background:transparent;border-radius:10px;padding:8px 16px;color:var(--muted);font-size:9px;font-weight:750;cursor:pointer}.engine-tabs button.active{background:#fff;color:var(--text);box-shadow:0 3px 10px rgba(20,24,34,.08)}
 .top-actions{justify-self:end;display:flex;align-items:center;gap:8px}.oss-pill{height:34px;border-radius:11px;padding:0 11px;background:rgba(255,255,255,.56);display:flex;align-items:center;gap:7px;font-size:8px;font-weight:700;color:var(--muted)}.oss-pill i{width:6px;height:6px;border-radius:50%;background:#34c759;box-shadow:0 0 0 4px rgba(52,199,89,.09)}
@@ -108,9 +109,12 @@ a.soft-btn{display:inline-flex;align-items:center;text-decoration:none;color:inh
 <body>
 <div class="app">
   <header class="topbar glass">
-    <div class="brand">
-      <div class="mark" aria-hidden="true"><div class="pair"><i class="bot-eye"></i><i class="bot-eye"></i></div></div>
-      <div><div class="eyebrow">GL-BE3600</div><strong>Motion Studio</strong></div>
+    <div class="brand-row">
+      <div class="brand">
+        <div class="mark" aria-hidden="true"><div class="pair"><i class="bot-eye"></i><i class="bot-eye"></i></div></div>
+        <div><div class="eyebrow">GL-BE3600</div><strong>Motion Studio</strong></div>
+      </div>
+      <div class="nav-slot" id="studioNav"></div>
     </div>
 
     <div class="engine-tabs">
@@ -121,6 +125,7 @@ a.soft-btn{display:inline-flex;align-items:center;text-decoration:none;color:inh
 
     <div class="top-actions">
       <span class="oss-pill"><i></i><span id="sourceLabel">Vanta.js · MIT</span></span>
+      <button class="soft-btn help-btn" id="helpBtn" type="button" title="How this works" aria-label="How this works">?</button>
       <button class="soft-btn" id="touchBtn">Touch map</button>
       <button class="dark-btn" id="focusBtn">Focus</button>
     </div>
@@ -2543,6 +2548,49 @@ console.log(
     empty.classList.toggle('hidden', !active || S.bitmaps.length > 0);
     if (active) { if (S.bitmaps.length) { t0 = performance.now(); showAt(0); } start(); }
   });
+})();
+</script>
+
+<script>
+/* The walkthrough, shown the first time this page is opened and again from the ? button. */
+(function () {
+  'use strict';
+  document.getElementById('studioNav').appendChild(window.Studio.nav('motion'));
+
+  var g = window.Studio.guide({
+    key: 'motion-1',
+    title: 'Motion Studio, end to end',
+    intro: 'Everything happens in this page. Nothing is uploaded anywhere: the animation is built here and goes straight to your router.',
+    steps: [
+      { h: 'Pick a look', p: 'Atmosphere is six slow colour scenes, Robot Eyes is a library of expressions, GIF takes your own.',
+        art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+           + '<rect x="4" y="14" width="33" height="28" rx="7" fill="#4d7cff"/>'
+           + '<rect x="43" y="14" width="33" height="28" rx="7" fill="#262a33"/>'
+           + '<rect x="82" y="14" width="33" height="28" rx="7" fill="#262a33"/>'
+           + '<rect x="53" y="23" width="6" height="11" rx="3" fill="#fff"/><rect x="62" y="23" width="6" height="11" rx="3" fill="#fff"/>'
+           + '<path d="M87 36l8-9 6 7 4-5 8 7" stroke="#7b8291" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+      { h: 'Shape it', p: 'The preview is the real screen, 284 by 76. Move the sliders until it looks right at that size.',
+        art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+           + '<rect x="7" y="7" width="106" height="27" rx="6" fill="#0b0d12" stroke="#2c313c" stroke-width="1.5"/>'
+           + '<rect x="45" y="14" width="9" height="13" rx="4.5" fill="#fff"/><rect x="58" y="14" width="9" height="13" rx="4.5" fill="#fff"/>'
+           + '<rect x="7" y="44" width="106" height="4" rx="2" fill="#2c313c"/><circle cx="74" cy="46" r="7" fill="#4d7cff"/></svg>' },
+      { h: 'Compile', p: 'Compile BE3600 Pack asks how long the loop should be, 1 to 25 seconds, and packs only what changes between frames.',
+        art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+           + '<rect x="4" y="12" width="19" height="13" rx="3.5" fill="#262a33"/><rect x="4" y="31" width="19" height="13" rx="3.5" fill="#262a33"/>'
+           + '<rect x="27" y="12" width="19" height="13" rx="3.5" fill="#262a33"/><rect x="27" y="31" width="19" height="13" rx="3.5" fill="#262a33"/>'
+           + '<path d="M54 28h13m-4-5l5 5-5 5" stroke="#7b8291" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+           + '<rect x="76" y="14" width="38" height="28" rx="7" fill="#4d7cff"/>'
+           + '<text x="95" y="32" font-size="10" font-weight="700" fill="#fff" text-anchor="middle" font-family="sans-serif">.bea</text></svg>' },
+      { h: 'It lands on the router', p: 'With Studio Link running it goes over as you compile, and the three slots below show what is on the router.',
+        art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+           + '<rect x="4" y="16" width="33" height="25" rx="7" fill="#30b14f"/>'
+           + '<path d="M13 29l5 5 10-12" stroke="#fff" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+           + '<rect x="43" y="16" width="33" height="25" rx="7" fill="none" stroke="#2c313c" stroke-width="1.8" stroke-dasharray="4 3.5"/>'
+           + '<rect x="82" y="16" width="33" height="25" rx="7" fill="none" stroke="#2c313c" stroke-width="1.8" stroke-dasharray="4 3.5"/></svg>' }
+    ],
+    foot: 'No Studio Link yet? The Send to your router panel below has the download. It installs the screen saver, then reopens this page connected.'
+  });
+  document.getElementById('helpBtn').addEventListener('click', g.open);
 })();
 </script>
 </body>

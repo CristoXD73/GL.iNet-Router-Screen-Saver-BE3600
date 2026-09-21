@@ -283,6 +283,30 @@ s, h, d = req("POST", "/use?name=zzz", headers={"Origin": ORIGIN})
 check(s == 422 and "no animation called" in d["message"], "the router's own reason is passed on")
 set_rc(0)
 set_out(None)
+
+print("== sending a fan chime ==")
+set_out("saved 'mine'. Hear it with:  be3600-fan chime mine\n")
+forget_calls()
+s, h, d = req("POST", "/chime?name=mine", b"60:500 255:900", {"Origin": ORIGIN})
+check(s == 200 and d["ok"] and ssh_args()[-1] == "be3600-fan save mine '60:500 255:900'",
+      "a chime is saved on the router")
+forget_calls()
+s, h, d = req("POST", "/chime?name=wrap", b"  60:500\n255:900  \n", {"Origin": ORIGIN})
+check(s == 200 and ssh_args()[-1] == "be3600-fan save wrap '60:500 255:900'", "line breaks and spare spaces are tidied")
+forget_calls()
+for name, body in (("a%3Bb", b"60:500"), ("..%2F..", b"60:500"), ("", b"60:500"),
+                   ("ok", b"60:500; reboot"), ("ok", b"$(id)"), ("ok", b"60:500 '; rm -rf /"), ("ok", b"")):
+    s, h, d = req("POST", "/chime?name=" + name, body, {"Origin": ORIGIN})
+    check(s == 400, "a chime called %r with %r is refused" % (name, body))
+check(ssh_args() is None, "and none of them reached ssh")
+s, h, d = req("POST", "/chime?name=big", b"60:500 " * 600, {"Origin": ORIGIN})
+check(s == 400, "and a body far too long for a chime is refused")
+set_rc(1)
+set_out("the router already keeps 8 chimes of your own.\n")
+s, h, d = req("POST", "/chime?name=ninth", b"60:500", {"Origin": ORIGIN})
+check(s == 422 and "already keeps 8" in d["message"], "the router's own reason is passed on")
+set_rc(0)
+set_out(None)
 sl.Config.key = None
 
 print("== the router password ==")

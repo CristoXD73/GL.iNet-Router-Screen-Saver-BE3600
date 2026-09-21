@@ -468,6 +468,7 @@ static void slide_between(const uint8_t *other, int from, int to, unsigned ms)
 #include "qr.inc"            /* the QR encoder, for the Wi-Fi page            */
 #include "pages_touch.inc"   /* alerts, timers, message, guest, weather, ...  */
 #include "pages_extra.inc"   /* analog, aurora, doctor, talkers               */
+#include "pages_manage.inc"  /* your animation slots, and the fan chimes      */
 #include "pages.inc"         /* the table of them all                          */
 #include "hello.inc"         /* the welcome after installing                   */
 
@@ -694,6 +695,21 @@ static int slot_find(const char *key)
         if (strcmp(k, key) == 0) return i;
     }
     return -1;
+}
+
+/* Build the page list again, keeping the page you are on. The slots page calls this after it
+ * deletes an animation, so the carousel loses that page straight away. */
+static void slots_reload(void)
+{
+    char key[140];
+    int had = cur_slot >= 0 && cur_slot < n_slots;
+
+    if (had) slot_key(&slots[cur_slot], key, sizeof key);
+    n_slots = 0;
+    slots_ready = 0;
+    slots_init();
+    cur_slot = had ? slot_find(key) : -1;
+    nb[0].tried = nb[1].tried = 0;
 }
 
 static int has_widget_slots(void)
@@ -1258,7 +1274,8 @@ static void run_banners(void)
         night_wake();
         note("alert: %s (%d)", a.text, a.level);
         if (cfg_chime)                                  /* and, if asked to, is heard on the cooling fan */
-            run_action("chime", a.level == AL_BAD ? "bad" : a.level == AL_WARN ? "warn" : a.level == AL_GOOD ? "good" : "info");
+            run_action("chime", a.level == AL_BAD ? "banner:bad" : a.level == AL_WARN ? "banner:warn" :
+                                a.level == AL_GOOD ? "banner:good" : "banner:info");
         while (!stop_requested && !dismiss && mono_ms() - start < 6500) {
             cv_fill(C_BLACK);
             draw_banner(&a, mono_ms() - start);
@@ -1304,6 +1321,24 @@ static int house_tick(void)
 enum { S_TIME = 0, S_RESCHEDULE, S_EXIT, S_STOP, S_BROKEN };
 
 #define HOLD_MS 900
+
+/* Five taps in a row, none more than a second and a half after the last, play FAN_CHIME_TAPS.
+ * Five is far enough past an accident that nobody finds it by mistake, and near enough that
+ * somebody told about it can do it first go. */
+static int tap_run;
+static long long tap_run_ms;
+
+static void count_taps(long long nowms)
+{
+    if (nowms - tap_run_ms > 1500) tap_run = 0;
+    tap_run++;
+    tap_run_ms = nowms;
+    if (tap_run >= 5 && *cfg_taps_chime) {
+        tap_run = 0;
+        log_gesture("five taps: chime", 0, 0);
+        run_action("chime", cfg_taps_chime);
+    }
+}
 
 /* Waits until deadline_ns while looking after the touchscreen and the housekeeping. While a finger is
  * dragging, the page is paused (the deadline is ignored) until it lets go. */
@@ -1362,6 +1397,7 @@ static int service(long long deadline_ns)
         }
         if (pending_tap && gs != G_DOWN && now / 1000000LL - pending_tap >= double_tap_ms) {
             pending_tap = 0;
+            count_taps(now / 1000000LL);
             if (wd && wd->tap) {
                 log_gesture("tap: page action", 0, 0);
                 wd->tap();
@@ -1479,6 +1515,12 @@ int main(int argc, char **argv)
     for (ai = 0; ai < 3; ai++) if (cfg_pomo[ai] < 1 || cfg_pomo[ai] > 240) cfg_pomo[ai] = ai == 0 ? 25 : ai == 1 ? 5 : 15;
     cfg_alerts = cfg_num("ALERTS", 1) != 0;
     cfg_chime = cfg_num("FAN_CHIME", 0) != 0;
+    /* Absent from an older config file means nobody has had a say yet, so five taps rev;
+     * setting it to nothing is how you turn that off. */
+    if (!cfg_get("FAN_CHIME_TAPS", cfg_taps_chime, sizeof cfg_taps_chime))
+        snprintf(cfg_taps_chime, sizeof cfg_taps_chime, "rev");
+    if (strspn(cfg_taps_chime, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") != strlen(cfg_taps_chime))
+        cfg_taps_chime[0] = 0;
     autoplay_s = (int)cfg_num("AUTOPLAY_SECONDS", 0);
     if (autoplay_s < 0) autoplay_s = 0;
     if (cfg_get("NIGHT_START", v, sizeof v)) night_start = parse_hm(v);

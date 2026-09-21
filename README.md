@@ -31,31 +31,28 @@ admin password.
 
 <div align="center">
 
-### 1. [Open Motion Studio](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/)
+### 1. [Download Studio Link](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/get.html)
 
 </div>
 
-Design an animation there: colour scenes, robot eyes, or your own GIF. The page
-has a **Download Studio Link** button.
-
-**2. Download Studio Link and double-click it.** Windows: the `.cmd` file. Mac /
-Linux: `python3 studio-link.py`. One file, which:
+**2. Double-click it.** Mac / Linux: `python3 studio-link.py`. That one file:
 
 * finds your router,
 * asks for its admin password once,
 * installs the screen saver if the router does not have it,
 * offers to remember this computer, encrypted with a passphrase you choose,
-* opens Motion Studio, connected.
+* **opens Motion Studio, already connected** — that is where you design.
 
-**Compile** then sends your animation to the router, and the three slots on the
-page show what is on it. The animation appears after a few idle seconds and
-survives reboots.
+The install ends with the eyes waking up on the router's screen while the fan
+revs under them, so you know it took. Then **Compile** in Motion Studio sends
+your animation over, and the three slots on the page show what is on the router.
+It appears after a few idle seconds and survives reboots.
 
 ### Step by step
 
 <div align="center">
 
-<img src="docs/assets/step1-download.svg" alt="Step 1: press Download Studio Link on the Motion Studio page, then double-click the downloaded file" width="820">
+<img src="docs/assets/step1-download.svg" alt="Step 1: get Studio Link from the download page, then double-click the downloaded file" width="820">
 
 <img src="docs/assets/step2-install.svg" alt="Step 2: type the router password once, press Enter to install the screen saver, press Enter to remember this computer" width="820">
 
@@ -103,7 +100,9 @@ More help: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 </div>
 
 Motion Studio is a page in your browser: nothing to install, nothing uploaded.
-Pick **Atmosphere** (six slow colour scenes), **Robot Eyes** (a library of expressions) or **GIF** (bring your own, or press **Search GIFs**: *Classic* shows only GIFs that fit the strip, *Risky* shows any GIF; the compiler crops or fits it to the strip), shape it, then open **Compiler and optimizer** (**Create your
+The **?** button walks through it in four pictures, and the **Motion / Fan**
+tabs next to the logo switch between designing an animation and designing a
+chime for the fan. Pick **Atmosphere** (six slow colour scenes), **Robot Eyes** (a library of expressions) or **GIF** (bring your own, or press **Search GIFs**: *Classic* shows only GIFs that fit the strip, *Risky* shows any GIF; the compiler crops or fits it to the strip), shape it, then open **Compiler and optimizer** (**Create your
 video**) and click **Compile BE3600 Pack**. It asks how long the loop should
 be (1-25 s).
 
@@ -126,9 +125,10 @@ If Studio Link isn't running, or your browser blocks it, the old way still works
 save the file and drag it onto **`Set-Animation.cmd`** (or run `./set-animation.sh`).
 
 **The router keeps up to 3**, so you can switch back later, and **each loops for
-at most 25 s**. The same name replaces the old one. Manage them from a terminal:
-`be3600-anim list` / `use NAME` / `remove NAME` (see
-[all commands](#turn-it-off-or-remove-it)).
+at most 25 s**. The same name replaces the old one. Manage them from Motion
+Studio, from the router's own screen (put `slots` in `PAGES`: tap moves along the
+three, hold removes one), or from a terminal: `be3600-anim list` / `use NAME` /
+`remove NAME` (see [all commands](#turn-it-off-or-remove-it)).
 <details>
 <summary><b>What is Studio Link, and is it safe?</b></summary>
 
@@ -256,6 +256,8 @@ be3600-anim pages reset                                      # back to animation
 | `stopwatch` | Tap to start and stop, hold to reset |
 | `message` | A note you set with `be3600-anim say "back at 5" yellow` |
 | `guest` | The guest Wi-Fi as a switch: hold your finger down to turn it on or off |
+| `slots` | Your three animation slots. Tap moves along them; hold removes one |
+| `chimes` | The fan chimes. Tap plays the next one, hold repeats it |
 | `wifiqr` | A QR code that joins a Wi-Fi network (opt-in: it shows the password to anyone who looks) |
 | `weather` | Current weather (needs `WEATHER_LAT` / `WEATHER_LON`; asks open-meteo.com, nothing else) |
 | `custom` | Your own pages: scripts in `/etc/be3600-screen/widgets.d` (see below) |
@@ -269,8 +271,8 @@ And around them:
 * **Night mode:** between `NIGHT_START` and `NIGHT_END` the backlight dims to `NIGHT_BRIGHTNESS`
   (0 = dark). A touch wakes it for 20 seconds and does nothing else.
 * **Schedule:** `SCHEDULE="22:00=clock 07:00=animations"` shows a page at set times.
-* **Chimes you can hear:** the router's one moving part is its cooling fan, and `FAN_CHIME=1`
-  lets a banner knock as well as appear. See below for what that does and does not sound like.
+* **Chimes you can hear:** the router's one moving part is its cooling fan, so it is the speaker.
+  **Tap the screen five times** and it revs. See below for what that does and does not sound like.
 
 All settings are documented in `/etc/be3600-screen/config`.
 
@@ -288,16 +290,41 @@ The idle is the trick. From a standstill the rotor spends half a second breaking
 lands against silence, which reads as one vague rush; from an idle floor it already has momentum,
 so the stab arrives in time and lands against a running engine. Under 400 ms is not worth asking for.
 
+**Five built in:** `ping` is one blip; `up` is a blip and a long pull away; `down` goes on the gas
+and then dies in stages; `alert` is three hard stabs; `rev` is the whole engine — start, two deep
+cuts with a stab out of each, then the long pull.
+
+**Four things play one**, and that is the entire list:
+
+| What | Switched on by |
+|---|---|
+| **Five taps** on the screen, from any page | `FAN_CHIME_TAPS="rev"` — on out of the box |
+| **A banner**, heard as well as seen | `FAN_CHIME=1` |
+| **The `chimes` page**: tap for the next one, hold to repeat | `chimes` in `PAGES` |
+| **By hand** | `be3600-fan chime rev` |
+
+Nothing plays at all between `FAN_CHIME_QUIET="22:00-08:00"`.
+
+**Your own** live in `/etc/be3600-screen/chimes.d`, one short file each, **up to eight** — the same
+idea as the three animation slots. `be3600-fan chimes` prints them, says where they are, and shows
+which of the four rows above is on.
+
 ```
-be3600-fan chimes            ping, up, down, alert, rev
-be3600-anim chime rev        hear one
-be3600-fan play "60:600 255:600 60:450 255:1700"     duty:milliseconds
-be3600-fan spin 60           hold a speed; "spin auto" hands it back
+be3600-fan chimes                                    the list, and what plays them
+be3600-fan chime rev                                 hear one
+be3600-fan play "60:600 255:600 60:450 255:1700"     duty:milliseconds, without saving it
+be3600-fan save mine "60:600 255:1800"               keep it as one of your eight
+be3600-fan forget mine
+be3600-fan spin 60                                   hold a speed; "spin auto" hands it back
 ```
 
-`FAN_CHIME=1` plays a chime with every banner: a blip and a pull away when something comes back, a
-wind-down in stages when it goes, three hard stabs for a warning. `FAN_CHIME_QUIET="22:00-08:00"`
-keeps the nights quiet.
+**[Fan Studio](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/fan.html)**
+designs them, and is a tab away in Motion Studio. Drag the bars and it shows what the fan will
+actually do: the speed curve is simulated from this router's own tachometer — spin-up 0.85 s,
+coast-down 0.75 s, half a second of dead time before a stopped rotor breaks away — so a 200 ms blip
+visibly fails to reach full speed instead of you finding out by ear. It plays an approximation
+through your speakers, and **Send to router** puts it on the router through Studio Link. Without
+Studio Link, save the `.chime` file and copy it into `chimes.d` yourself.
 
 The installer ends with `be3600-anim hello`: the two eyes from Motion Studio's logo wake on the
 strip, look around and blink while the fan revs under them, widening on each stab of throttle and
@@ -306,17 +333,6 @@ gets the eyes on their own.
 
 Cooling wins. Nothing plays above 70 °C, the previous fan speed is always restored even if the
 command is killed, and no chime may hold the fan longer than twelve seconds.
-
-**[Fan Studio](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/fan.html)**
-designs your own. Drag the bars and it shows what the fan will actually do: the speed curve is
-simulated from this router's own tachometer -- spin-up 0.85 s, coast-down 0.75 s, half a second of
-dead time before a stopped rotor breaks away -- so a 200 ms blip visibly fails to reach full speed
-instead of you finding out by ear. It plays an approximation through your speakers and saves a
-`.chime` file. Drop that in `/etc/be3600-screen/chimes.d/`:
-
-```
-be3600-fan chime mychime
-```
 
 `tools/sound_to_fan.py` maps a short WAV onto the fan. It is how the 1-UP jingle was tried, and how
 melodies were ruled out.
@@ -372,7 +388,8 @@ It runs as root, at most five seconds each time, and only its first 2 KB is used
 Install.cmd / install.sh          one-click installer
 Set-Animation.cmd / set-animation.sh   drag-and-drop animation swap
 Studio-Link.cmd / studio-link.sh       lets Motion Studio send animations to the router
-studio/                            Motion Studio (the browser tool)
+studio/                            the browser tools: get.html (download),
+                                   index.html (Motion), fan.html (Fan)
 animations/                        the bundled animation
 router/                            files that end up on the router
 setup/                             install / uninstall scripts that run there

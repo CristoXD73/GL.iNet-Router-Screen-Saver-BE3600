@@ -406,6 +406,37 @@ function Invoke-RouterCommand {
 }
 
 
+function Invoke-SendChime {
+    param([string]$Name, [string]$Steps)
+
+    $Steps = ($Steps -split '\s+' | Where-Object { $_ }) -join ' '
+    if ($Name -notmatch '^[A-Za-z0-9._-]{1,40}$') {
+        return New-Reply 400 'Bad Request' @{ ok = $false; message = 'That is not a valid chime name.' }
+    }
+    if ($Steps -notmatch '^\d{1,3}:\d{1,6}( \d{1,3}:\d{1,6}){0,31}$') {
+        return New-Reply 400 'Bad Request' @{ ok = $false; message = 'A chime is a list of duty:milliseconds steps, nothing else.' }
+    }
+    if ($DryRun) { return New-Reply 200 'OK' @{ ok = $true; dryRun = $true; message = 'Dry run: nothing was sent.' } }
+
+    $ip = Get-TargetRouter
+    if (-not $ip) { return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'Could not find your router.' } }
+
+    Write-Step 'send' "chime '$Name' to $ip"
+    # $Steps has already been checked to be digits, colons and single spaces, so it cannot escape the quotes.
+    $r = Invoke-Ssh -Ip $ip -Remote "be3600-fan save $Name '$Steps'"
+    if ($r.Code -eq 255 -or $r.Out -match 'Permission denied') {
+        return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'Could not log in to the router.' }
+    }
+    if ($r.Code -ne 0) {
+        $line = Get-LastLine $r.Out
+        if (-not $line) { $line = 'The router refused it. It keeps at most 8 chimes of your own.' }
+        return New-Reply 422 'Unprocessable Entity' @{ ok = $false; message = $line }
+    }
+    Write-Step 'ok' "saved '$Name' on the router"
+    return New-Reply 200 'OK' @{ ok = $true; message = "Saved on the router as '$Name'. Hear it from the chimes page, or set FAN_CHIME_TAPS=$Name for five taps." }
+}
+
+
 # ----------------------------------------------------------------------------
 # Sending one animation (the same steps as Set-Animation, quietly)
 # ----------------------------------------------------------------------------
@@ -549,6 +580,21 @@ function Handle-Client {
 
         if ($req.Method -eq 'POST' -and ($req.Path -eq '/use' -or $req.Path -eq '/remove')) {
             $r = Invoke-RouterCommand $req.Path.Substring(1) $req.Query['name']
+            Send-Response $stream $r.Status $r.Reason $cors $r.Data
+            return
+        }
+
+        if ($req.Method -eq 'POST' -and $req.Path -eq '/chime') {
+            if ($req.Length -le 0 -or $req.Length -gt 4096) {
+                Send-Response $stream 400 'Bad Request' $cors @{ ok = $false; message = 'A chime is a short list of steps.' }
+                return
+            }
+            if ($req.Headers['expect'] -eq '100-continue') {
+                $c = $Script:Latin1.GetBytes("HTTP/1.1 100 Continue`r`n`r`n")
+                $stream.Write($c, 0, $c.Length)
+            }
+            $body = Read-HttpBody $stream $req
+            $r = Invoke-SendChime $req.Query['name'] ([Text.Encoding]::UTF8.GetString($body))
             Send-Response $stream $r.Status $r.Reason $cors $r.Data
             return
         }

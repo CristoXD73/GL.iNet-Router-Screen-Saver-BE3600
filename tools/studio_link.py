@@ -330,6 +330,34 @@ def router_command(verb, name):
     return 200, "OK", {"ok": True, "message": last_line(out) or "Done."}
 
 
+SAFE_STEPS = re.compile(r"^\d{1,3}:\d{1,6}( \d{1,3}:\d{1,6}){0,31}$")
+
+
+def send_chime(name, steps):
+    """Fan Studio's Send to router: be3600-fan save NAME "STEPS". -> (status, reason, dict)."""
+    steps = " ".join((steps or "").split())
+    if not SAFE_NAME.match(name or ""):
+        return 400, "Bad Request", {"ok": False, "message": "That is not a valid chime name."}
+    if not SAFE_STEPS.match(steps):
+        return 400, "Bad Request", {"ok": False, "message": "A chime is a list of duty:milliseconds steps, nothing else."}
+    if Config.dry_run:
+        return 200, "OK", {"ok": True, "dryRun": True, "message": "Dry run: nothing was sent."}
+    ip = find_router()
+    if not ip:
+        return 502, "Bad Gateway", {"ok": False, "message": "Could not find your router."}
+    say("send", "chime '%s' to %s" % (name, ip))
+    # steps has already been checked to be digits, colons and single spaces, so it cannot escape the quotes.
+    code, out = run_ssh(ip, "be3600-fan save %s '%s'" % (name, steps))
+    if code == 255 or login_failed(out):
+        return 502, "Bad Gateway", {"ok": False, "message": "Could not log in to the router."}
+    if code != 0:
+        return 422, "Unprocessable Entity", {"ok": False, "message": last_line(out) or
+                                             "The router refused it. It keeps at most 8 chimes of your own."}
+    say("ok", "saved '%s' on the router" % name)
+    return 200, "OK", {"ok": True, "message": "Saved on the router as '%s'. Hear it from the chimes page, "
+                                              "or set FAN_CHIME_TAPS=%s for five taps." % (name, name)}
+
+
 def send_file(data, name):
     """The same steps as set-animation.sh. -> (http status, reason, dict)."""
     say("got", "'%s' from Motion Studio (%d KB)" % (name, (len(data) + 1023) // 1024))
@@ -482,6 +510,19 @@ class Handler(BaseHTTPRequestHandler):
         if parts.path in ("/use", "/remove"):
             name = (query.get("name") or [""])[0]
             self._locked(cors, lambda: router_command(parts.path[1:], name))
+            return
+
+        if parts.path == "/chime":
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                n = 0
+            if n <= 0 or n > 4096:
+                self._reply(400, "Bad Request", {"ok": False, "message": "A chime is a short list of steps."}, cors)
+                return
+            body = self.rfile.read(n).decode("utf-8", "replace")
+            name = (query.get("name") or [""])[0]
+            self._locked(cors, lambda: send_chime(name, body))
             return
 
         if parts.path != "/send":

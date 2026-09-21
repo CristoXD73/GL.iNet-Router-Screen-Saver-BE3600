@@ -34,13 +34,13 @@
     <path d="M0 16a16 16 0 0 1 16-16h528a16 16 0 0 1 16 16v26H0z" class="bar"/>
     <circle class="dot" cx="24" cy="21" r="5"/><circle class="dot" cx="42" cy="21" r="5"/><circle class="dot" cx="60" cy="21" r="5"/>
     <rect class="url" x="84" y="9" width="440" height="24" rx="12"/>
-    <text class="s" x="102" y="25">cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio</text>
+    <text class="s" x="102" y="25">cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/get.html</text>
 
-    <text class="s" x="34" y="80" letter-spacing="1.5">SEND TO YOUR ROUTER</text>
+    <text class="s" x="34" y="80" letter-spacing="1.5">START HERE</text>
     <circle class="red" cx="40" cy="106" r="6"/>
-    <text class="b" x="56" y="111">Studio Link is not running</text>
-    <text class="p" x="34" y="140">Download it below and double-click it. The first time it sets up</text>
-    <text class="p" x="34" y="160">your router (just press Enter); then this page connects by itself.</text>
+    <text class="b" x="56" y="111">Get Studio Link</text>
+    <text class="p" x="34" y="140">One file. It sets up the router, then opens Motion Studio</text>
+    <text class="p" x="34" y="160">already connected to it. Nothing else to download.</text>
 
     <rect class="soft" x="34" y="188" width="262" height="40" rx="12"/>
     <text class="b" x="52" y="213">Download Studio Link for Windows</text>

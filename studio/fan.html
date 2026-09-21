@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- This page loads nothing from anywhere else and talks to nothing. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<!-- Loads only its own files, and talks only to Studio Link on this computer. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src http://127.0.0.1:8791 blob:; base-uri 'none'; form-action 'none'">
 <title>BE3600 Fan Studio</title>
 <link rel="stylesheet" href="shared.css">
 <style>
@@ -46,6 +46,8 @@ select,input[type=text]{width:100%;height:32px;border:0;border-radius:10px;paddi
 .note{font-size:8px;color:var(--muted);line-height:1.5;margin-top:11px}
 .legend{display:flex;gap:12px;font-size:8px;color:var(--muted);margin:6px 2px 0}
 .legend i{display:inline-block;width:9px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
+.linkline{font-size:9px;color:var(--muted);margin:8px 6px 0;line-height:1.5}
+.linkline.ok{color:var(--green)}.linkline.err{color:#d0402f}
 </style>
 </head>
 <body>
@@ -53,13 +55,17 @@ select,input[type=text]{width:100%;height:32px;border:0;border-radius:10px;paddi
 <div class="topbar glass">
   <div class="mark" aria-hidden="true"><div class="pair"><i class="bot-eye"></i><i class="bot-eye"></i></div></div>
   <div class="brand"><strong>Fan Studio</strong><small>design a chime for the BE3600's cooling fan</small></div>
+  <div class="nav-slot" id="studioNav"></div>
   <div class="spacer"></div>
-  <button class="btn dark" id="play">Hear it</button>
+  <button class="btn help-btn" id="helpBtn" type="button" title="How this works" aria-label="How this works">?</button>
+  <button class="btn" id="play">Hear it</button>
   <button class="btn" id="stop" disabled>Stop</button>
+  <button class="btn dark" id="send" disabled>Send to router</button>
   <button class="btn" id="save">Save .chime</button>
   <button class="btn" id="load">Open…</button>
   <input type="file" id="file" accept=".chime,.txt,text/plain" hidden>
 </div>
+<p class="linkline" id="linkLine">Looking for Studio Link on this computer...</p>
 
 <main>
   <section class="panel glass">
@@ -396,6 +402,68 @@ document.getElementById("copy").onclick = function () {
 };
 document.getElementById("steps").addEventListener("change", function () { push(); steps = parse(this.value); render(); });
 
+/* ---------------------------------------------------------------- straight onto the router
+ * The same Studio Link that carries animations carries chimes: one POST, and the router runs
+ * be3600-fan save. Without it, Save .chime writes the file and you copy it across yourself. */
+var LINK = "http://127.0.0.1:8791", TOKEN = null, linkOk = false;
+var NO_LINK = "Studio Link is not running. Save .chime writes the file; put it in "
+            + "/etc/be3600-screen/chimes.d on the router, or run: be3600-fan save NAME \"steps\"";
+
+try {
+  var pm = /[#&]link=([A-Za-z0-9_-]{20,64})/.exec(window.location.hash || "");
+  if (pm) {
+    TOKEN = pm[1];
+    window.Studio.save("be3600-link", TOKEN);
+    try { history.replaceState(null, "", window.location.pathname); } catch (e) {}
+  } else {
+    TOKEN = window.Studio.load("be3600-link", null);
+  }
+} catch (e) {}
+
+function linkFetch(path, opts) {
+  var c = new AbortController(), t;
+
+  opts = opts || {};
+  opts.mode = "cors";
+  opts.headers = TOKEN ? { "X-Studio-Token": TOKEN } : {};
+  opts.signal = c.signal;
+  t = setTimeout(function () { c.abort(); }, opts.ms || 20000);
+  return fetch(LINK + path, opts).then(function (r) { clearTimeout(t); return r.json(); });
+}
+
+var lineEl = document.getElementById("linkLine"), sendBtn = document.getElementById("send");
+function setLine(cls, msg) { lineEl.className = "linkline" + (cls ? " " + cls : ""); lineEl.textContent = msg; }
+
+function checkLink() {
+  linkFetch("/ping", { ms: 6000 }).then(function (j) {
+    if (j && j.ok && j.authed) {
+      linkOk = true;
+      sendBtn.disabled = false;
+      setLine("ok", "Studio Link is running" + (j.router ? ", router " + j.router : "") + ". Send to router keeps this chime there, next to the five built-in ones.");
+    } else if (j && j.needToken) {
+      setLine("", "Studio Link is running, but this tab was not opened by it. Open Motion Studio from the Studio Link window, then come back here.");
+    } else {
+      setLine("", NO_LINK);
+    }
+  }).catch(function () { setLine("", NO_LINK); });
+}
+
+sendBtn.onclick = function () {
+  if (!linkOk) return;
+  var n = name();
+
+  sendBtn.disabled = true;
+  setLine("", "Sending '" + n + "' to the router...");
+  linkFetch("/chime?name=" + encodeURIComponent(n), { method: "POST", body: text(), ms: 60000 })
+    .then(function (j) {
+      setLine(j.ok ? "ok" : "err", j.message || (j.ok ? "Saved." : "The router refused it."));
+      if (j.ok) toast("sent " + n);
+    })
+    .catch(function () { setLine("err", "Lost contact with Studio Link. Check its window."); })
+    .finally(function () { sendBtn.disabled = false; });
+};
+checkLink();
+
 document.getElementById("save").onclick = function () {
   var body = "# be3600 fan chime: " + name() + "\n"
            + "# " + (total() / 1000).toFixed(1) + " s. Put this in /etc/be3600-screen/chimes.d/" + name()
@@ -452,6 +520,42 @@ PRESETS.forEach(function (p) {
   b.onclick = function () { push(); steps = parse(p[1]); document.getElementById("name").value = p[0]; render(); };
   pc.appendChild(b);
 });
+
+/* ---------------------------------------------------------------- the shell: tabs and the guide */
+document.getElementById("studioNav").appendChild(window.Studio.nav("fan"));
+
+var guide = window.Studio.guide({
+  key: "fan-1",
+  title: "The fan as a doorbell",
+  intro: "The BE3600 has no speaker. It has a cooling fan, and a fan can be told how fast to spin, so that is the instrument.",
+  steps: [
+    { h: "Not a tune", p: "There is no pitch to play with: at any speed it is broadband rush. What carries is loudness and rhythm, so a chime is an engine being revved.",
+      art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+         + '<path d="M6 33c5-14 10 14 15 0s10-14 15 0" stroke="#4a5160" stroke-width="2.4" fill="none" stroke-linecap="round"/>'
+         + '<path d="M6 14l36 28" stroke="#ff453a" stroke-width="2.6" stroke-linecap="round"/>'
+         + '<rect x="58" y="32" width="9" height="14" rx="2" fill="#30b14f"/><rect x="69" y="12" width="14" height="34" rx="2" fill="#30b14f"/>'
+         + '<rect x="85" y="28" width="8" height="18" rx="2" fill="#30b14f"/><rect x="95" y="6" width="19" height="40" rx="2" fill="#30b14f"/></svg>' },
+    { h: "Drag the bars", p: "A bar's height is how hard the fan is driven, its width is how long. Drag the body up or down, drag its right edge sideways, double-click to add or remove one.",
+      art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+         + '<rect x="8" y="28" width="28" height="20" rx="2" fill="#0a84ff" opacity=".35"/><rect x="8" y="28" width="28" height="3" fill="#0a84ff"/>'
+         + '<rect x="42" y="12" width="38" height="36" rx="2" fill="#0a84ff" opacity=".35"/><rect x="42" y="12" width="38" height="3" fill="#0a84ff"/>'
+         + '<path d="M61 26v-9m-4 4l4-4 4 4M61 34v9m-4-4l4 4 4-4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+         + '<path d="M86 30h12m-4-4l4 4-4 4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    { h: "Watch the green line", p: "Blue is what you asked for, green is what the fan does. Spin-up takes most of a second, so a short blip never arrives: if green does not reach it, you will not hear it.",
+      art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+         + '<path d="M6 44V14h34v30h26V20h48" stroke="#0a84ff" stroke-width="2" fill="none" opacity=".6" stroke-linejoin="round"/>'
+         + '<path d="M6 46c10 0 12-28 28-28 8 0 10 26 22 26 10 0 8-24 22-24 12 0 20 2 36 2" stroke="#30b14f" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>' },
+    { h: "Send it over", p: "With Studio Link running, Send to router keeps it there as one of your eight. Then hear it from the chimes page on the screen, or put its name in FAN_CHIME_TAPS for five taps.",
+      art: '<svg viewBox="0 0 120 56" aria-hidden="true">'
+         + '<circle cx="26" cy="28" r="17" fill="none" stroke="#2c313c" stroke-width="2"/>'
+         + '<path d="M26 28c0-9 12-9 12-2s-12 7-12 2 12 5 6 10-8-7-6-10-5 11-11 5 8-7 11-5-11-2-11-9 11-2 11 4" fill="#30b14f"/>'
+         + '<path d="M50 28h16m-5-5l5 5-5 5" stroke="#7b8291" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+         + '<rect x="74" y="16" width="40" height="24" rx="6" fill="#111318" stroke="#2c313c" stroke-width="1.8"/>'
+         + '<rect x="86" y="24" width="6" height="9" rx="3" fill="#fff"/><rect x="96" y="24" width="6" height="9" rx="3" fill="#fff"/></svg>' }
+  ],
+  foot: "Nothing plays above 70 C, nothing may hold the fan for more than 12 seconds, and the speed the router had is always put back. Cooling wins."
+});
+document.getElementById("helpBtn").onclick = guide.open;
 
 window.addEventListener("resize", render);
 syncUI();

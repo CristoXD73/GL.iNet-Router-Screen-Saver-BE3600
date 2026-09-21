@@ -75,6 +75,10 @@ def make_tree():
     w(d + "/path.txt", "gw=192.168.0.1\ngw_ms=3.0\nnet_ms=18.2\ndns_ms=42\n")
     w(d + "/talkers.txt", "dev|iPhone|5200000|240000\ndev|CyberDeck|910000|80000\ndev|Living room TV|420000|12000\ndev|Printer|9000|1200\n")
     w(d + "/custom-solar.txt", "title: Solar\nbig: 3.2 kW\nline: today 14.1 kWh\nline: battery 78%\nbar: 78\nspark: 1 2 4 6 5 7 9 8 6 5\ncolor: green\n")
+    w(d + "/chimes.txt", "state\tready\nping\t60:500 255:800\nup\t60:600 255:600 60:450 255:1700\n"
+                         "down\t255:1500 150:500 100:500 60:700\nalert\t60:450 255:550 60:400 255:550 60:400 255:900\n"
+                         "rev\t255:2200 60:550 255:900 36:500 255:1000 90:200 255:2600\nmine\t60:400 255:1200\n")
+    w(d + "/anims.txt", "*\tsunset-drift\t41008\t12.4\n-\trobot-eyes\t8210\t4.0\nlimits\t3\t25\n")
     return root
 
 
@@ -108,7 +112,8 @@ def to_image(fbdata):
 
 
 PAGES = ["clock", "analog", "aurora", "netspeed", "talkers", "vitals", "info", "clients", "internet", "doctor",
-         "usage", "vpn", "health", "pomodoro", "stopwatch", "message", "guest", "wifiqr", "weather", "custom:solar"]
+         "usage", "vpn", "health", "pomodoro", "stopwatch", "message", "guest", "wifiqr", "weather",
+         "slots", "chimes", "custom:solar"]
 
 
 def main():
@@ -156,6 +161,17 @@ def main():
     w(root + "/data/path.txt", "gw=192.168.0.1\ngw_ms=3.0\nnet_ms=-1\ndns_ms=-1\n")
     b, _ = render(root, "doctor")
     check(a != b, "the doctor page changes when the internet stops answering")
+    a, _ = render(root, "chimes")
+    w(root + "/data/chimes.txt", "state\tquiet\nping\t60:500 255:800\n")
+    b, _ = render(root, "chimes")
+    check(a != b, "the chimes page says when quiet hours mean nothing would play")
+    w(root + "/data/chimes.txt", "state\tnofan\n")
+    c, _ = render(root, "chimes")
+    check(c is not None and c != b, "and says so on a router with no fan")
+    a, _ = render(root, "slots")
+    w(root + "/data/anims.txt", "limits\t3\t25\n")
+    b, _ = render(root, "slots")
+    check(a != b, "the slots page shows three empty slots when nothing is saved")
     a, _ = render(root, "talkers")
     w(root + "/data/talkers.txt", "")
     b, _ = render(root, "talkers")

@@ -44,6 +44,8 @@ TOUCH_DEVICE=""
 #   pomodoro    focus timer (touch)         stopwatch  stopwatch (touch)
 #   message     be3600-anim say "..."       guest      guest Wi-Fi switch (hold)
 #   wifiqr      QR code to join a network   weather    needs WEATHER_LAT / WEATHER_LON
+#   slots       your 3 animations: tap to pick, hold to remove one
+#   chimes      the fan chimes: tap to hear the next one
 #   custom      your scripts in /etc/be3600-screen/widgets.d, or custom:NAME
 #
 PAGES="animations"
@@ -60,10 +62,16 @@ SCHEDULE=""
 # a timer finishing, the router getting hot, the data cap reached. 0 turns them off.
 ALERTS=1
 
-# Play the banner on the cooling fan as well as showing it. The fan is the only moving part
-# the router has, and its speed is the only thing it can be told, so a chime is an engine
-# revving rather than a tune. Skipped above 70C, because cooling wins.  be3600-fan chimes
+# ---- the fan, as a speaker --------------------------------------------------------------------
+# The fan is the only moving part the router has, and its speed is the only thing it can be told,
+# so a chime is an engine revving rather than a tune. Five built in (ping, up, down, alert, rev)
+# and up to 8 of your own from Fan Studio.  be3600-fan chimes  shows them and what plays them.
+
+# 1 = a banner is heard as well as seen.
 FAN_CHIME=0
+
+# Five taps in a row play this chime, from any page. Empty turns that off.
+FAN_CHIME_TAPS="rev"
 
 # Hours to stay silent. Empty means any time.
 FAN_CHIME_QUIET="22:00-08:00"

@@ -345,6 +345,103 @@ def t_guest_action():
                 os.unlink(p)
 
 
+def with_action(pages, config="", files=None, lib=("a",)):
+    """A rig whose be3600-widget-action is a script that just records what it was asked for."""
+    script = tempfile.mktemp(suffix=".sh")
+    out = tempfile.mktemp()
+    with open(script, "w") as f:
+        f.write("#!/bin/sh\necho \"$@\" >> %s\n" % out)
+    os.chmod(script, 0o755)
+    r = Rig(pages, config=config, files=files, lib=lib)
+    r.p.send_signal(signal.SIGTERM)
+    r.p.wait(2)
+    env = dict(os.environ, BE3600_TESTING="1", BE3600_ROOT=r.root, BE3600_NOW=str(NOW0), BE3600_FB=r.fb,
+               BE3600_ACTION=script)
+    env.pop("TZ", None)
+    r.p = subprocess.Popen([PLAYER, "--gestures", "--touch", r.fifo, "--lib", r.lib, "--data", r.data,
+                            "--config", "/etc/be3600-screen/config", r.root + "/active.bea"],
+                           env=env, stderr=r.log)
+    time.sleep(0.5)
+
+    def asked():
+        return [ln.strip() for ln in open(out)] if os.path.exists(out) else []
+
+    def clean():
+        r.close()
+        for p in (script, out):
+            if os.path.exists(p):
+                os.unlink(p)
+    return r, asked, clean
+
+
+CHIMES = "state\tready\nping\t60:500 255:800\nup\t60:600 255:600\nrev\t255:2200 60:550 255:900\n"
+
+
+def t_chimes_page():
+    r, asked, clean = with_action("chimes", config='FAN_CHIME_TAPS=""', files={"/data/chimes.txt": CHIMES})
+    try:
+        r.tap()
+        time.sleep(0.9)
+        check(asked() == ["chime up"], "a tap moves to the next chime and plays it", str(asked()))
+        r.tap()
+        time.sleep(0.9)
+        check(asked()[-1] == "chime rev", "the next tap moves on again", str(asked()))
+        r.hold(1.4)
+        time.sleep(0.6)
+        check(asked()[-1] == "chime rev", "holding repeats the one you are on", str(asked()))
+        check(r.alive(), "the player is still running")
+    finally:
+        clean()
+
+
+def t_five_taps():
+    r, asked, clean = with_action("clock analog aurora", config='FAN_CHIME_TAPS="rev"')
+    try:
+        for _ in range(4):
+            r.tap()
+            time.sleep(0.5)
+        check(asked() == [], "four taps are just four page changes", str(asked()))
+        r.tap()
+        time.sleep(0.8)
+        check(asked() == ["chime rev"], "the fifth tap in a row revs the fan", str(asked()))
+        for _ in range(4):
+            r.tap()
+            time.sleep(0.5)
+        check(asked() == ["chime rev"], "and the count starts again, not every tap after it", str(asked()))
+    finally:
+        clean()
+
+
+def t_five_taps_off():
+    r, asked, clean = with_action("clock analog", config='FAN_CHIME_TAPS=""')
+    try:
+        for _ in range(6):
+            r.tap()
+            time.sleep(0.5)
+        check(asked() == [], "with FAN_CHIME_TAPS empty, tapping stays silent", str(asked()))
+    finally:
+        clean()
+
+
+def t_slots_page():
+    anims = "*\tsunset\t41000\t12.4\n-\teyes\t8200\t4.0\nlimits\t3\t25\n"
+    r, asked, clean = with_action("slots", config='FAN_CHIME_TAPS=""',
+                                  files={"/data/anims.txt": anims}, lib=("sunset", "eyes"))
+    try:
+        r.hold(1.4)
+        time.sleep(0.6)
+        check(asked() == ["anim remove:sunset"], "holding on a slot removes that animation", str(asked()))
+        r.tap()
+        time.sleep(0.9)
+        r.hold(1.4)
+        time.sleep(0.6)
+        check(asked() == ["anim remove:sunset"], "a tap moves to the empty slot, and holding there does nothing",
+              str(asked()))
+        check(r.alive(), "the player is still running")
+    finally:
+        clean()
+
+
 for name, fn in [
     ("Pomodoro timer", t_pomodoro),
     ("a finished timer rings from any page", t_pomodoro_rings),
@@ -357,6 +454,10 @@ for name, fn in [
     ("alerts", t_alerts),
     ("night mode", t_night),
     ("guest Wi-Fi switch", t_guest_action),
+    ("the fan chimes, tapped through", t_chimes_page),
+    ("five taps rev the fan", t_five_taps),
+    ("five taps, turned off", t_five_taps_off),
+    ("the animation slots page", t_slots_page),
 ]:
     run(name, fn)
 

@@ -12,6 +12,8 @@
 #   weather.txt   current weather from open-meteo.com            (weather)
 #   path.txt      how far out the network works: router, ISP link, internet, names   (doctor)
 #   talkers.txt   bytes per device right now, from the kernel's connection table      (talkers)
+#   chimes.txt    the fan chimes and whether one would be heard now          (chimes)
+#   anims.txt     the saved animations, and which one is playing             (slots)
 #   custom-*.txt  output of your scripts in /etc/be3600-screen/widgets.d
 #   events        one line per thing worth a banner (internet down/up, new device, VPN change)
 #
@@ -26,6 +28,8 @@ PING_TARGET="1.1.1.1"
 PING_INTERVAL=5
 DNS_PROBE="openwrt.org"
 CONNTRACK="${BE3600_CONNTRACK:-/proc/net/nf_conntrack}"
+FAN="${BE3600_FAN:-/usr/sbin/be3600-fan}"
+ANIM="${BE3600_ANIM:-/usr/sbin/be3600-anim}"
 ALERTS=1
 WIFI_QR_SECTION=""
 WEATHER_LAT=""
@@ -43,7 +47,7 @@ mkdir -p "$D"
 has() { case " $PAGES " in *" $1 "*) return 0 ;; esac; return 1; }
 has_prefix() { case " $PAGES " in *" $1"*) return 0 ;; esac; return 1; }
 
-NEED_PING=0; NEED_WIFI=0; NEED_VPN=0; NEED_GUEST=0; NEED_QR=0; NEED_WEATHER=0; NEED_CUSTOM=0; NEED_PATH=0; NEED_TALKERS=0
+NEED_PING=0; NEED_WIFI=0; NEED_VPN=0; NEED_GUEST=0; NEED_QR=0; NEED_WEATHER=0; NEED_CUSTOM=0; NEED_PATH=0; NEED_TALKERS=0; NEED_CHIMES=0; NEED_ANIMS=0
 { has internet || has health; }   && NEED_PING=1
 has clients                      && NEED_WIFI=1
 { has vpn || has health; }        && NEED_VPN=1
@@ -53,6 +57,8 @@ has weather                      && NEED_WEATHER=1
 { has custom || has_prefix "custom:"; } && NEED_CUSTOM=1
 has doctor                       && NEED_PATH=1
 has talkers                      && NEED_TALKERS=1
+has chimes                       && NEED_CHIMES=1
+has slots                        && NEED_ANIMS=1
 # New-device alerts need the client list even when its page is not shown.
 [ "$ALERTS" != 0 ] && NEED_WIFI=1
 
@@ -307,6 +313,31 @@ collect_talkers() {
     ' "$CONNTRACK" | sort -rn | cut -f2- | head -n 8 | put talkers.txt
     [ -f "$D/.flows.tmp" ] && mv "$D/.flows.tmp" "$D/.flows"
 }
+# ---------------------------------------------------------------- the fan chimes
+# The list changes only when you add or remove one, but "would it be heard right now" changes
+# with the temperature and the clock, so this is re-read every half minute.
+collect_chimes() {
+    [ -x "$FAN" ] || { printf 'state\tnofan\n' | put chimes.txt; return; }
+    "$FAN" chimes --plain 2>/dev/null | put chimes.txt
+}
+
+# ---------------------------------------------------------------- the saved animations
+# The same list Motion Studio sees, for the slots page. Working out each one's length means
+# reading the whole file, which is by far the dearest thing here, so it is only done when the
+# library has actually changed. The page also drops a slot itself the moment you remove one.
+ANIM_LIB="${BE3600_LIB:-/etc/be3600-screen/animations}"
+ANIM_ACTIVE="${BE3600_ACTIVE:-/etc/be3600-screen/active.bea}"
+ANIM_SIG=""
+
+collect_anims() {
+    [ -x "$ANIM" ] || return 0
+    # shellcheck disable=SC2012  # BusyBox has no reliable stat; size and time from ls is enough here
+    SIG="$(ls -ln "$ANIM_LIB"/*.bea "$ANIM_ACTIVE" 2>/dev/null | awk '{print $5 $6 $7 $8 $9}')"
+    [ "$SIG" = "$ANIM_SIG" ] && [ -f "$D/anims.txt" ] && return 0
+    ANIM_SIG="$SIG"
+    "$ANIM" list --plain 2>/dev/null | put anims.txt
+}
+
 # ---------------------------------------------------------------- the loop
 N=0
 while :; do
@@ -319,6 +350,8 @@ while :; do
     [ "$NEED_CUSTOM" = 1 ] && [ $((N % 5)) -eq 4 ] && collect_custom
     [ "$NEED_PATH" = 1 ] && [ $((N % 15)) -eq 3 ] && collect_path
     [ "$NEED_TALKERS" = 1 ] && [ $((N % 3)) -eq 0 ] && collect_talkers
+    [ "$NEED_CHIMES" = 1 ] && [ $((N % 30)) -eq 0 ] && collect_chimes
+    [ "$NEED_ANIMS" = 1 ] && [ $((N % 30)) -eq 5 ] && collect_anims
     [ "$ONCE" = 1 ] && [ "$N" -ge "$ONCE_N" ] && break
     N=$((N + 1))
     sleep 1

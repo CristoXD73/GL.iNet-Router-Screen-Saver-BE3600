@@ -30,6 +30,8 @@ static const struct widget_def widget_table[] = {
     { "stopwatch", w_stopwatch, 10, sw_tap, sw_hold },
     { "message",   w_message,   20, NULL,   NULL },
     { "guest",     w_guest,     4,  NULL,   guest_hold },
+    { "slots",     w_slots,     4,  sl_tap, sl_hold },
+    { "chimes",    w_chimes,    4,  ch_tap, ch_hold },
     { "wifiqr",    w_wifiqr,    1,  NULL,   NULL },
     { "weather",   w_weather,   1,  NULL,   NULL },
     { "custom",    w_custom,    1,  NULL,   NULL },

@@ -10,3 +10,6 @@ id_*
 *.pub
 
 __pycache__/
+
+# Local editor/preview settings.
+.claude/

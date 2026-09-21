@@ -4,11 +4,14 @@
 # user typed: the two words come from the player's own code.
 #
 #   be3600-widget-action guest toggle|on|off     switch the guest Wi-Fi network
-#   be3600-widget-action chime good|warn|bad|info
-#                                                sound the cooling fan, if FAN_CHIME is on
+#   be3600-widget-action chime banner:good|warn|bad|info
+#                                                a banner, heard as well as seen -- only if FAN_CHIME=1
+#   be3600-widget-action chime NAME              play that chime, because the screen was touched
+#   be3600-widget-action anim remove:NAME        delete a saved animation (the slots page)
 
 D="${BE3600_DATA:-/tmp/be3600-widgets}"
 FAN="${BE3600_FAN:-/usr/sbin/be3600-fan}"
+ANIM="${BE3600_ANIM:-/usr/sbin/be3600-anim}"
 
 guest_sections() { uci -q show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)\.guest='1'.*/\1/p"; }
 
@@ -37,25 +40,44 @@ guest() {
     ( wifi reload >/dev/null 2>&1 & )
 }
 
-# A banner on the screen can also be heard, if the owner asked for it. Off unless FAN_CHIME=1.
+# Two ways a chime happens. A banner is heard only if the owner turned that on (FAN_CHIME=1);
+# a chime the screen was touched for is what the person standing there just asked for, so it plays.
 chime() {
-    COMMON="$(dirname "$0")/../lib/be3600/common.sh"
-    [ -r "$COMMON" ] || COMMON="/usr/lib/be3600/common.sh"
-    # shellcheck source=router/usr/lib/be3600/common.sh
-    . "$COMMON"
-    [ "$(conf_get FAN_CHIME)" = 1 ] || exit 0
-    [ -x "$FAN" ] || exit 0
     case "$1" in
-        good) N=up ;;
-        warn) N=alert ;;
-        bad)  N=down ;;
-        *)    N=ping ;;
+        banner:*)
+            COMMON="$(dirname "$0")/../lib/be3600/common.sh"
+            [ -r "$COMMON" ] || COMMON="/usr/lib/be3600/common.sh"
+            # shellcheck source=router/usr/lib/be3600/common.sh
+            . "$COMMON"
+            [ "$(conf_get FAN_CHIME)" = 1 ] || exit 0
+            case "${1#banner:}" in
+                good) N=up ;;
+                warn) N=alert ;;
+                bad)  N=down ;;
+                *)    N=ping ;;
+            esac
+            ;;
+        ''|*[!A-Za-z0-9._-]*|.*) exit 1 ;;
+        *) N="$1" ;;
     esac
+    [ -x "$FAN" ] || exit 0
     "$FAN" chime "$N" >/dev/null 2>&1
+}
+
+# The slots page, after a finger was held on an animation for a second.
+anim() {
+    case "$1" in
+        remove:*) NAME="${1#remove:}" ;;
+        *) exit 1 ;;
+    esac
+    case "$NAME" in ''|*[!A-Za-z0-9._-]*|.*) exit 1 ;; esac
+    [ -x "$ANIM" ] || exit 0
+    "$ANIM" remove "$NAME" >/dev/null 2>&1
 }
 
 case "$1" in
     guest) guest "$2" ;;
     chime) chime "$2" ;;
-    *) echo "usage: be3600-widget-action guest toggle|on|off  |  chime good|warn|bad|info" >&2; exit 1 ;;
+    anim)  anim "$2" ;;
+    *) echo "usage: be3600-widget-action guest toggle|on|off  |  chime banner:LEVEL|NAME  |  anim remove:NAME" >&2; exit 1 ;;
 esac

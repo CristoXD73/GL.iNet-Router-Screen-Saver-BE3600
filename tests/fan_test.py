@@ -133,14 +133,25 @@ def main():
     print("== what the screen's banners do")
     code, out = run(env, "status")
     check("chimes: 1" in out, "status reports the setting", out)
-    p = subprocess.run(["sh", ACTION, "chime", "bad"], env=env, capture_output=True, text=True)
+    p = subprocess.run(["sh", ACTION, "chime", "banner:bad"], env=env, capture_output=True, text=True)
     check(p.returncode == 0 and duty(hw) == "0", "a banner plays one and leaves the fan alone", p.stdout + p.stderr)
     off = dict(env, BE3600_CONF=root + "/off")
     with open(root + "/off", "w") as f:
         f.write("FAN_CHIME=0\n")
     log = root + "/trace2"
-    p = subprocess.run(["sh", ACTION, "chime", "bad"], env=dict(off, BE3600_TRACE=log), capture_output=True, text=True)
+    p = subprocess.run(["sh", ACTION, "chime", "banner:bad"], env=dict(off, BE3600_TRACE=log), capture_output=True, text=True)
     check(p.returncode == 0 and not os.path.exists(log), "with FAN_CHIME=0 a banner stays silent")
+    # A chime the screen was touched for is what the person standing there asked for, so it plays
+    # whether or not banners were turned on.
+    log = root + "/trace3"
+    p = subprocess.run(["sh", ACTION, "chime", "rev"], env=dict(off, BE3600_TRACE=log), capture_output=True, text=True)
+    check(p.returncode == 0 and os.path.exists(log), "but a touch on the chimes page plays one anyway")
+    for bad in ("../../etc/passwd", "; reboot", ""):
+        p = subprocess.run(["sh", ACTION, "chime", bad], env=env, capture_output=True, text=True)
+        check(p.returncode == 1, "the screen cannot ask for the chime %r" % bad, p.stdout + p.stderr)
+    for bad in ("remove:../x", "remove:", "wipe:all"):
+        p = subprocess.run(["sh", ACTION, "anim", bad], env=env, capture_output=True, text=True)
+        check(p.returncode == 1, "the slots page cannot ask for %r" % bad, p.stdout + p.stderr)
 
     print("== chimes you designed yourself")
     cdir = root + "/chimes.d"
@@ -156,6 +167,42 @@ def main():
     check(code == 1, "a name that tries to escape the folder is refused", out)
     code, out = run(mine, "chime", "nosuch", "--force")
     check(code == 1, "an unknown name is refused", out)
+
+    print("== saving your own, and the limit on how many")
+    code, out = run(mine, "save", "second", "60:400 255:900")
+    check(code == 0, "save keeps one", out)
+    code, out, steps = trace(mine, hw, "chime", "second", "--force")
+    check(steps[:2] == ["60", "255"], "and it plays by name straight away", str(steps))
+    code, out = run(mine, "save", "rev", "60:400")
+    check(code == 1 and "built-in" in out, "a built-in name is refused", out)
+    code, out = run(mine, "save", "../escape", "60:400")
+    check(code == 1, "a name that tries to escape the folder is refused", out)
+    code, out = run(mine, "save", "junk", "600:10")
+    check(code == 1, "steps that are not playable are refused", out)
+    check(not os.path.exists(cdir + "/junk"), "and nothing is written for them")
+    for i in range(8):                                 # 'mine' and 'second' are already there
+        run(mine, "save", "filler%d" % i, "60:400")
+    n = len([f for f in os.listdir(cdir) if not f.endswith(".new")])
+    check(n == 8, "the router keeps at most 8 of your own", "kept %d" % n)
+    code, out = run(mine, "save", "onemore", "60:400")
+    check(code == 1 and "Remove one first" in out.replace("remove one first", "Remove one first"),
+          "the ninth is refused, with what to do about it", out)
+    code, out = run(mine, "save", "mine", "60:400 255:800")
+    check(code == 0, "but replacing one you already have is fine", out)
+    code, out = run(mine, "forget", "mine")
+    check(code == 0 and not os.path.exists(cdir + "/mine"), "forget deletes one", out)
+    code, out = run(mine, "forget", "nosuch")
+    check(code == 1, "forgetting something you do not have says so", out)
+
+    print("== the list the screen's chimes page reads")
+    code, out = run(mine, "chimes", "--plain")
+    lines = [ln for ln in out.splitlines() if ln]
+    check(code == 0 and lines[0] == "state\tready", "it starts with whether one would be heard now", lines[:1])
+    names = [ln.split("\t")[0] for ln in lines[1:]]
+    check(names[:5] == ["ping", "up", "down", "alert", "rev"], "then the built-in ones, in order", str(names))
+    check(all(len(ln.split("\t")) == 2 for ln in lines[1:]), "one name and one pattern per line", str(lines))
+    code, out = run(dict(mine, BE3600_TEMPFILE=root2 + "/temp"), "chimes", "--plain")
+    check(out.splitlines()[0] == "state\thot", "and it says when the router is too warm for one", out)
 
     print("== a router with no fan")
     root4 = tempfile.mkdtemp(prefix="be3600-fantest-")

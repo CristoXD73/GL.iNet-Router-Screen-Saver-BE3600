@@ -3,9 +3,11 @@
 # be3600-fan -- use the cooling fan as a little speaker.
 #
 #   be3600-fan status              what the fan is doing right now
-#   be3600-fan chimes              the chimes it knows
-#   be3600-fan chime NAME          ping, up, down, alert, rev, or one of yours from chimes.d
+#   be3600-fan chimes              the chimes it knows, and what plays them
+#   be3600-fan chime NAME          ping, up, down, alert, rev, or one of your own
 #   be3600-fan play "STEPS"        duty:milliseconds, e.g. "120:300 180:300 240:500"
+#   be3600-fan save NAME "STEPS"   keep one of your own (Fan Studio sends these)
+#   be3600-fan forget NAME         delete one of your own
 #   be3600-fan spin PERCENT        hold a speed, 0-100
 #   be3600-fan spin auto           hand the fan back to the temperature daemon
 #
@@ -15,7 +17,8 @@
 # held, then letting it die. A blip is a notice; a blip and a pull away means something came
 # back; falling away in stages means something went; three hard stabs means look at the screen.
 #
-# Design your own in Fan Studio and drop the .chime file in /etc/be3600-screen/chimes.d.
+# Five built-in chimes, plus up to 8 of your own in /etc/be3600-screen/chimes.d, the way the
+# library holds 3 animations. Fan Studio designs them and sends them here.
 #
 # This writes one thing, the PWM duty cycle, which is what the temperature daemon writes too,
 # and always restores the previous value, including when killed. It refuses above 70C.
@@ -31,6 +34,8 @@ MAX_TEMP=70000            # millidegrees: warmer than this and nothing plays
 MAX_TOTAL_MS=12000        # a chime may not hold the fan for longer than this
 MIN_DUTY=90               # below this the fan is too quiet to hear a difference
 MAX_DUTY=255
+MAX_CHIMES=8              # how many of your own the router keeps
+MAX_STEPS=32              # and how many steps one of them may have
 
 # conf_get, shared with the other scripts. Beside this one when installed, ../lib in the repo.
 COMMON="$(dirname "$0")/../lib/be3600/common.sh"
@@ -87,7 +92,7 @@ chime_steps() {
             # anything else is one of your own, saved from Fan Studio into chimes.d
             case "$1" in ''|*[!A-Za-z0-9._-]*|.*) return 1 ;; esac
             [ -f "$CHIMES/$1" ] || return 1
-            STEPS="$(grep -v '^[[:space:]]*#' "$CHIMES/$1" | tr '\n' ' ')"
+            STEPS="$(grep -v '^[[:space:]]*#' "$CHIMES/$1" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
             [ -n "$STEPS" ] || return 1
             echo "$STEPS"
             ;;
@@ -95,8 +100,7 @@ chime_steps() {
 }
 
 BUILTIN_NAMES="ping up down alert rev"
-chime_names() {
-    echo "$BUILTIN_NAMES" | tr ' ' '\n'
+own_names() {                      # just yours, in chimes.d
     for F in "$CHIMES"/*; do
         [ -f "$F" ] || continue
         N="${F##*/}"
@@ -105,6 +109,13 @@ chime_names() {
         echo "$N"
     done
 }
+
+chime_names() {
+    echo "$BUILTIN_NAMES" | tr ' ' '\n'
+    own_names
+}
+
+own_count() { own_names | grep -c . ; }
 
 # ---------------------------------------------------------------- playing
 # Whatever happens from here on, the fan goes back to where it was.
@@ -129,22 +140,42 @@ quiet_now() {
     fi
 }
 
-play_steps() {
-    have_fan || { echo "this router has no controllable fan" >&2; exit 1; }
+# What five taps play. Missing from an older config file means nobody has had a say yet, so it is
+# the rev; set to nothing is how you turn it off. The player reads it the same way.
+taps_chime() {
+    if grep -q '^[[:space:]]*FAN_CHIME_TAPS=' "$CONF" 2>/dev/null; then conf_get FAN_CHIME_TAPS; else echo rev; fi
+}
 
-    TOTAL=0
+# One word for whether a chime would be heard if you asked for one now.
+chime_state() {
+    have_fan || { echo nofan; return; }
+    [ "$(temp_now)" -lt "$MAX_TEMP" ] || { echo hot; return; }
+    if quiet_now; then echo quiet; else echo ready; fi
+}
+
+# Every way in goes through this: playing one, and saving one for later.
+check_steps() {
+    TOTAL=0; COUNT=0
     for STEP in $1; do
         case "$STEP" in
             *:*) ;;
-            *) echo "each step is duty:milliseconds, e.g. 180:300" >&2; exit 1 ;;
+            *) echo "each step is duty:milliseconds, e.g. 180:300" >&2; return 1 ;;
         esac
         D="${STEP%%:*}"; T="${STEP##*:}"
-        case "$D$T" in *[!0-9]*) echo "duty and milliseconds must be numbers: $STEP" >&2; exit 1 ;; esac
-        [ "$D" -le "$MAX_DUTY" ] || { echo "the highest duty is $MAX_DUTY" >&2; exit 1; }
-        [ "$T" -ge 20 ] || { echo "steps shorter than 20 ms do nothing" >&2; exit 1; }
-        TOTAL=$((TOTAL + T))
+        case "$D$T" in *[!0-9]*) echo "duty and milliseconds must be numbers: $STEP" >&2; return 1 ;; esac
+        [ "$D" -le "$MAX_DUTY" ] || { echo "the highest duty is $MAX_DUTY" >&2; return 1; }
+        [ "$T" -ge 20 ] || { echo "steps shorter than 20 ms do nothing" >&2; return 1; }
+        TOTAL=$((TOTAL + T)); COUNT=$((COUNT + 1))
     done
-    [ "$TOTAL" -le "$MAX_TOTAL_MS" ] || { echo "that would hold the fan for ${TOTAL}ms; the limit is ${MAX_TOTAL_MS}ms" >&2; exit 1; }
+    [ "$COUNT" -ge 1 ] || { echo "a chime needs at least one step" >&2; return 1; }
+    [ "$COUNT" -le "$MAX_STEPS" ] || { echo "that is $COUNT steps; the limit is $MAX_STEPS" >&2; return 1; }
+    [ "$TOTAL" -le "$MAX_TOTAL_MS" ] || { echo "that would hold the fan for ${TOTAL}ms; the limit is ${MAX_TOTAL_MS}ms" >&2; return 1; }
+    return 0
+}
+
+play_steps() {
+    have_fan || { echo "this router has no controllable fan" >&2; exit 1; }
+    check_steps "$1" || exit 1
 
     NOW_T="$(temp_now)"
     [ "$NOW_T" -lt "$MAX_TEMP" ] || { echo "the router is at $((NOW_T / 1000))C; the fan is busy cooling it" >&2; exit 2; }
@@ -169,6 +200,9 @@ status)
         if [ -f "$HOLD" ]; then echo "held:   yes, by be3600-fan spin ($(cat "$HOLD") %)"; else echo "held:   no (the temperature daemon has it)"; fi
         C="$(conf_get FAN_CHIME)"
         echo "chimes: ${C:-0}  (FAN_CHIME in $CONF)"
+        T="$(taps_chime)"
+        echo "5 taps: ${T:-off}  (FAN_CHIME_TAPS)"
+        echo "yours:  $(own_count) of $MAX_CHIMES in $CHIMES"
         Q="$(conf_get FAN_CHIME_QUIET)"
         [ -n "$Q" ] && echo "quiet:  $Q$(quiet_now && echo '  <- now')"
     else
@@ -178,11 +212,57 @@ status)
     ;;
 
 chimes)
+    # --plain is for programs: a state line, then NAME<tab>STEPS. The screen's "chimes" page
+    # reads it through be3600-widgetd. Stable on purpose.
+    if [ "$2" = "--plain" ]; then
+        printf 'state\t%s\n' "$(chime_state)"
+        for C in $(chime_names); do printf '%s\t%s\n' "$C" "$(chime_steps "$C")"; done
+        exit 0
+    fi
     echo "chimes:"
-    for C in $(chime_names); do printf '  %-10s %s\n' "$C" "$(chime_steps "$C")"; done
+    for C in $BUILTIN_NAMES; do printf '  %-12s %s\n' "$C" "$(chime_steps "$C")"; done
+    for C in $(own_names); do printf '  %-12s %s   (yours)\n' "$C" "$(chime_steps "$C")"; done
     echo
-    echo "play one with:  be3600-fan chime up"
-    echo "design your own in Fan Studio and save it into $CHIMES/"
+    echo "yours live in $CHIMES  ($(own_count) of $MAX_CHIMES used)"
+    echo "  Fan Studio designs them and sends them here; or: be3600-fan save NAME \"60:500 255:900\""
+    echo
+    echo "what plays one:"
+    C="$(conf_get FAN_CHIME)"; [ "$C" = 1 ] || C="off"
+    T="$(taps_chime)"; [ -n "$T" ] || T="off"
+    printf '  a banner       %s\n' "$C"
+    printf '  five taps      %s\n' "$T"
+    echo "  the screen     put 'chimes' in PAGES and tap through them"
+    echo "  by hand        be3600-fan chime NAME"
+    Q="$(conf_get FAN_CHIME_QUIET)"
+    [ -n "$Q" ] && echo "  silent between $Q"
+    echo
+    echo "right now: $(chime_state)"
+    ;;
+
+save)
+    NAME="$2"
+    case "$NAME" in ''|*[!A-Za-z0-9._-]*|.*) echo "a chime name may use letters, digits, dot, dash and underscore" >&2; exit 1 ;; esac
+    case " $BUILTIN_NAMES " in *" $NAME "*) echo "'$NAME' is a built-in chime; pick another name" >&2; exit 1 ;; esac
+    STEPS="$3"
+    [ -n "$STEPS" ] || STEPS="$(grep -v '^[[:space:]]*#' | tr '\n' ' ')"     # or from a pipe
+    check_steps "$STEPS" || exit 1
+    if [ ! -f "$CHIMES/$NAME" ] && [ "$(own_count)" -ge "$MAX_CHIMES" ]; then
+        echo "the router already keeps $MAX_CHIMES chimes of your own. Remove one first:" >&2
+        own_names | sed 's/^/  be3600-fan forget /' >&2
+        exit 1
+    fi
+    mkdir -p "$CHIMES"
+    { echo "# $NAME -- $((TOTAL / 1000)).$(((TOTAL % 1000) / 100)) s, $COUNT steps"; echo "$STEPS"; } > "$CHIMES/$NAME.new" &&
+        mv "$CHIMES/$NAME.new" "$CHIMES/$NAME" || exit 1
+    echo "saved '$NAME'. Hear it with:  be3600-fan chime $NAME"
+    ;;
+
+forget)
+    NAME="$2"
+    case "$NAME" in ''|*[!A-Za-z0-9._-]*|.*) echo "usage: be3600-fan forget NAME" >&2; exit 1 ;; esac
+    [ -f "$CHIMES/$NAME" ] || { echo "you have no chime called '$NAME'. You have: $(own_names | tr '\n' ' ')" >&2; exit 1; }
+    rm -f "$CHIMES/$NAME"
+    echo "removed '$NAME'."
     ;;
 
 chime)

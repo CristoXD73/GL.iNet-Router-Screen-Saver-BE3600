@@ -343,7 +343,7 @@ preview() {
 }
 
 # ---- pages: what the screen can show besides animations ---------------------
-PAGE_LIST="clock analog aurora netspeed talkers vitals info clients internet doctor usage vpn health pomodoro stopwatch message guest wifiqr weather custom"
+PAGE_LIST="clock analog aurora netspeed talkers vitals info clients internet doctor usage vpn health pomodoro stopwatch message guest wifiqr weather slots chimes custom"
 
 page_desc() {
     case "$1" in
@@ -367,6 +367,8 @@ page_desc() {
         guest) echo "guest Wi-Fi switch (hold to turn on/off)" ;;
         wifiqr) echo "QR code to join a Wi-Fi network (shows its password to anyone who looks)" ;;
         weather) echo "weather (needs WEATHER_LAT / WEATHER_LON in the config)" ;;
+        slots) echo "your 3 animation slots (tap to pick one, hold to remove it)" ;;
+        chimes) echo "the fan chimes (tap to hear the next one, hold to repeat)" ;;
         custom) echo "pages made by your scripts in /etc/be3600-screen/widgets.d (or custom:NAME)" ;;
     esac
 }
