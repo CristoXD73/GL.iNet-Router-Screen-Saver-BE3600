@@ -7,6 +7,7 @@ Nothing here spins a real fan: BE3600_HWMON points at ordinary files, so the tes
 exactly which duty cycles would have been written, and in which order.
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 FAN = os.path.join(HERE, "..", "router", "usr", "sbin", "be3600-fan")
 ACTION = os.path.join(HERE, "..", "router", "usr", "sbin", "be3600-widget-action")
+COMMON = os.path.join(HERE, "..", "router", "usr", "lib", "be3600", "common.sh")
 passed = failed = 0
 
 
@@ -38,13 +40,21 @@ def make_env(temp_mc=45000, conf="FAN_CHIME=1\n"):
         f.write("%d\n" % temp_mc)
     with open(root + "/config", "w") as f:
         f.write(conf)
+    # be3600-widget-action runs be3600-fan the way the router does, so the copy it is pointed at
+    # has to be laid out and marked the same way: nothing in the repo is executable (the installer
+    # does that on the router), and an unmarked file would make the action quietly do nothing.
+    os.makedirs(root + "/usr/sbin")
+    os.makedirs(root + "/usr/lib/be3600")
+    shutil.copy(FAN, root + "/usr/sbin/be3600-fan")
+    os.chmod(root + "/usr/sbin/be3600-fan", 0o755)
+    shutil.copy(COMMON, root + "/usr/lib/be3600/common.sh")
     env = dict(os.environ,
                BE3600_HWMON=hw,
                BE3600_TEMPFILE=root + "/temp",
                BE3600_CONF=root + "/config",
                BE3600_FANLOCK=root + "/lock",
                BE3600_FANHOLD=root + "/hold",
-               BE3600_FAN=os.path.abspath(FAN),
+               BE3600_FAN=root + "/usr/sbin/be3600-fan",
                BE3600_FAN_NOSLEEP="1")
     return root, hw, env
 
