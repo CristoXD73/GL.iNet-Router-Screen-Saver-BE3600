@@ -83,7 +83,8 @@ button, input, select, textarea { font: inherit }
   width: min(760px, 100%); max-height: 100%; overflow: auto; border-radius: 24px; padding: 20px 22px 18px;
   background: var(--bg); box-shadow: 0 30px 90px rgba(18, 22, 32, .3);
 }
-.guide h2 { margin: 0; font-size: 17px; letter-spacing: -.02em }
+/* Explicit, because Fan Studio styles its own h2 as a small uppercase label. */
+.guide h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; text-transform: none; color: var(--text) }
 .guide > p { margin: 5px 0 0; font-size: 10px; color: var(--muted); line-height: 1.6 }
 .guide-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; margin: 16px 0 14px }
 @media (max-width: 720px) { .guide-steps { grid-template-columns: 1fr 1fr } }
