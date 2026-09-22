@@ -507,6 +507,11 @@ case "$1" in
 on)
     [ -f "$BEA" ] || { echo "no animation at $BEA -- install one with: be3600-anim set FILE.bea"; exit 1; }
     lua "$CHECK" "$BEA" || exit 1
+    # Disable first. Where in the boot this starts has changed between versions, and `enable`
+    # alone would add the new /etc/rc.d/S??be3600-screensaver next to the old one, which would
+    # start the supervisor twice.
+    "$SVC" disable >/dev/null 2>&1 || true
+    rm -f /etc/rc.d/S[0-9][0-9]be3600-screensaver
     "$SVC" enable
     if running; then "$SVC" restart; else "$SVC" start; fi
     echo "screensaver ON: starts at boot; appears after the idle time; swipe or tap = next animation, double-tap = dismiss."

@@ -39,8 +39,11 @@ rm -f /usr/bin/be3600-screensaver \
       /usr/sbin/be3600-widget-action \
       /usr/sbin/be3600-uninstall \
       /etc/init.d/be3600-screensaver \
-      /etc/rc.d/S99be3600-screensaver \
+      /etc/rc.d/S81be3600-screensaver \
       /etc/rc.d/K10be3600-screensaver
+
+# Older versions started at a different point in the boot; leave none of them behind.
+rm -f /etc/rc.d/S[0-9][0-9]be3600-screensaver
 
 echo "Removing entries from /etc/sysupgrade.conf..."
 if [ -f /etc/sysupgrade.conf ]; then
@@ -56,6 +59,7 @@ if [ -f /etc/sysupgrade.conf ]; then
               -e "/usr/sbin/be3600-uninstall" \
               -e "/etc/init.d/be3600-screensaver" \
               -e "/etc/be3600-screen" \
+              -e "/etc/rc.d/S81be3600-screensaver" \
               -e "/etc/rc.d/S99be3600-screensaver" \
               -e "/etc/rc.d/K10be3600-screensaver" \
               /etc/sysupgrade.conf > /tmp/sysupgrade.conf.new

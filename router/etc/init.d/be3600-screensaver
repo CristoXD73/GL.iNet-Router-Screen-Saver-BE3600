@@ -4,7 +4,11 @@
 # (USE_PROCD, START and STOP are read by OpenWrt's rc.common, not by this file.)
 
 USE_PROCD=1
-START=99
+# Right after gl_screen (80), not at the end of the boot. Thirty-odd services sit between the
+# two -- tailscale, openvpn, adguardhome and the rest -- and every one of them is time spent
+# looking at GL.iNet's home screen before the welcome can start. Nothing here needs them: the
+# display and the touchscreen are the kernel's work and are ready long before this.
+START=81
 STOP=10
 
 start_service() {

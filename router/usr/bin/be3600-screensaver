@@ -274,6 +274,8 @@ kill_touch() {
 }
 
 
+stock_running() { ps w | grep -q '[/]usr/bin/gl_screen'; }
+
 stop_stock() {
 
     # gl_screen does not act on SIGTERM, so procd waits a full five seconds before killing it --
@@ -707,6 +709,12 @@ if [ -f "$SHOW_NOW" ]; then
     log "keeping the screen (the welcome is handing it over)"
     kill_custom
     stop_widgetd
+elif stock_running; then
+    # This is a boot: gl_screen started a moment ago and is already on the display. Restarting
+    # it here would only make it blink.
+    kill_custom
+    stop_widgetd
+    log "OWNER = GL.iNet (already up)"
 else
     start_stock
 fi

@@ -202,7 +202,7 @@ reason, and tries again every minute.
 
 ## Persistence
 
-* **Reboots:** `be3600-anim on` enables the service (`/etc/rc.d/S99...`), and it
+* **Reboots:** `be3600-anim on` enables the service (`/etc/rc.d/S81...`), and it
   starts again on every boot. `be3600-anim off` removes that link.
 * **Firmware upgrades:** the installer appends the project's files to
   `/etc/sysupgrade.conf`, which is the standard OpenWrt list of files kept by a
