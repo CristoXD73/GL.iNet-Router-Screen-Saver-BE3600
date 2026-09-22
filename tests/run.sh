@@ -338,6 +338,41 @@ rm -f "$TMP/lib/a.bea"
 OUT="$(next_library_animation)"; if [ -z "$OUT" ]; then pass "with an empty library, there is nothing to switch to"; else fail "empty library gave: $OUT"; fi
 
 
+echo "== the welcome plays once per boot, not on every restart =="
+# hello_due answers "is the welcome owed?" without needing a display or a fan, so the rule can
+# be checked here: once after a boot, never again until /tmp is empty again.
+sed -n '/^hello_due() {/,/^}/p' router/usr/bin/be3600-screensaver > "$TMP/hello.sh"
+# shellcheck source=/dev/null
+. "$TMP/hello.sh"
+
+printf '#!/bin/sh\necho "be3600-player 5 (BEA1, BEA2, --fade, --gestures, pages, --hello)"\n' > "$TMP/player-hello"
+printf '#!/bin/sh\necho "be3600-player 4 (BEA1, BEA2, --fade, --gestures, pages)"\n' > "$TMP/player-old"
+chmod 755 "$TMP/player-hello" "$TMP/player-old"
+
+export HELLO_ON_BOOT=1
+export HELLO_DONE="$TMP/hello-done"
+export NATIVE="$TMP/player-hello"
+
+rm -f "$HELLO_DONE"
+if hello_due; then pass "owed on the first pass after a boot"; else fail "not owed after a boot"; fi
+
+: > "$HELLO_DONE"
+if hello_due; then fail "played twice in one boot"; else pass "not owed again once it has played"; fi
+
+rm -f "$HELLO_DONE"
+export HELLO_ON_BOOT=0
+if hello_due; then fail "played with HELLO_ON_BOOT=0"; else pass "HELLO_ON_BOOT=0 turns it off"; fi
+
+export HELLO_ON_BOOT=1
+export NATIVE="$TMP/player-old"
+if hello_due; then fail "asked a player that has no --hello for one"; else pass "a player too old for it is left alone"; fi
+
+export NATIVE="$TMP/not-installed"
+if hello_due; then fail "asked a player that is not there"; else pass "no native player (Lua only): no welcome"; fi
+
+unset HELLO_ON_BOOT HELLO_DONE NATIVE
+
+
 echo "== a second tap within the window is a double-tap; one tap alone is not =="
 # Exercises the real timing path (second_tap_follows, using the real "timeout" and
 # the real touch helper) against a FIFO standing in for /dev/input/eventN, since a

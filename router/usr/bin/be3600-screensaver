@@ -32,8 +32,11 @@ TOUCH_LONG_AXIS=Y               # which touchscreen axis runs along the strip (X
 SWITCH_FADE_MS=250              # crossfade time of a tap switch when the helper-based scheme is in use
 LOCKDIR="/tmp/be3600-screen.lock"
 SHOW_NOW="/tmp/be3600-screen.show-now"   # be3600-anim hello leaves this so the welcome runs straight into the screensaver
+HELLO_ON_BOOT=1          # 1 = the welcome plays once each time the router starts up
+HELLO_DONE="/tmp/be3600-screen.hello-done"   # in /tmp, which the router empties on boot: one welcome per boot
 PLAYER="/usr/bin/be3600-player.lua"
 NATIVE="/usr/bin/be3600-player"
+FAN="/usr/sbin/be3600-fan"
 PLAYER_ENGINE="auto"     # auto = the native player if installed, else Lua; "lua" forces Lua
 TOUCH="/usr/bin/be3600-wait-touch.lua"
 WIDGETD="/usr/bin/be3600-widgetd"
@@ -273,20 +276,28 @@ kill_touch() {
 
 stop_stock() {
 
-    /etc/init.d/gl_screen stop >/dev/null 2>&1 || true
+    # gl_screen does not act on SIGTERM, so procd waits a full five seconds before killing it --
+    # and `gl_screen stop` blocks us for all five while gl_screen carries on drawing. So the
+    # stop goes in the background (procd still needs to hear it, or it would respawn) and the
+    # waiting is done here, where we can hurry it along. The display is ours as soon as it lets go.
+    /etc/init.d/gl_screen stop >/dev/null 2>&1 &
 
     COUNT=0
 
-    while ps w | grep -q '[g]l_screen'; do
+    # Only the daemon itself: the backgrounded init script has "gl_screen" in its name too.
+    while :; do
+
+        STOCK_PIDS="$(ps w | grep '[/]usr/bin/gl_screen' | awk '{print $1}')"
+        [ -z "$STOCK_PIDS" ] && break
 
         COUNT=$((COUNT+1))
 
-        if [ "$COUNT" -ge 20 ]; then
-            for PID in $(ps w | grep '[g]l_screen' | awk '{print $1}'); do
-                kill -9 "$PID" 2>/dev/null || true
-            done
-            break
+        if [ "$COUNT" -ge 3 ]; then
+            # shellcheck disable=SC2086  # a list of PIDs, deliberately unquoted
+            kill -9 $STOCK_PIDS 2>/dev/null || true
         fi
+
+        [ "$COUNT" -ge 25 ] && break
 
         /bin/usleep 100000
     done
@@ -618,6 +629,43 @@ run_animation() {
 
 
 # ------------------------------------------------------------
+# THE WELCOME, ONCE PER BOOT
+# ------------------------------------------------------------
+
+# Is the welcome owed? Its own function so the tests can ask without a display or a fan.
+#
+# The marker lives in /tmp, which is memory and is empty after every boot, so the welcome
+# plays when the router starts and not when this service is merely restarted -- which it is
+# every time you change an animation or a setting.
+hello_due() {
+    [ "$HELLO_ON_BOOT" != 0 ] || return 1
+    [ ! -f "$HELLO_DONE" ] || return 1
+    [ -x "$NATIVE" ] || return 1                 # the Lua player cannot draw it
+    "$NATIVE" --version 2>/dev/null | grep -q -- --hello || return 1
+    return 0
+}
+
+# The eyes wake up while the fan revs, then it hands straight over to the screensaver.
+# Unlike `be3600-anim hello`, the chime is not forced: a router that restarts itself at four
+# in the morning should not rev, so FAN_CHIME_QUIET still applies. The eyes play regardless.
+play_hello() {
+    log "welcome: the eyes wake up"
+
+    kill_custom
+    stop_widgetd
+    stop_stock                      # the fast one: do not give GL.iNet's screen five more seconds
+    /bin/usleep 100000
+    echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
+
+    [ -x "$FAN" ] && "$FAN" chime rev >/dev/null 2>&1 &
+    "$NATIVE" --hello >/dev/null 2>&1
+    wait 2>/dev/null
+
+    : > "$SHOW_NOW"        # and on into the screensaver, without the stock screen in between
+}
+
+
+# ------------------------------------------------------------
 # CLEAN EXIT
 # ------------------------------------------------------------
 
@@ -641,6 +689,15 @@ trap cleanup EXIT
 # ------------------------------------------------------------
 # MAIN LOOP
 # ------------------------------------------------------------
+
+# Straight after a boot, say hello before anything else touches the display. This has to come
+# before start_stock below: that calls `gl_screen start`, which paints GL.iNet's home screen --
+# and then the welcome would pull it away again a moment later, which is exactly the flash the
+# welcome exists to avoid. If the display cannot be checked yet, the loop tries again.
+if hello_due && verify_firmware; then
+    : > "$HELLO_DONE"
+    play_hello
+fi
 
 # Normally the stock screen owns the display until the idle time is up. The exception is the
 # welcome handing over: it still has the screen, so painting the stock UI here would flash
@@ -671,6 +728,13 @@ while :; do
         continue
     fi
     WARNED=0
+
+    # The retry: normally the welcome has already played above, before anything painted the
+    # display. It only reaches here if the compatibility check was not ready at start-up.
+    if hello_due; then
+        : > "$HELLO_DONE"
+        play_hello
+    fi
 
     # The welcome has just had the screen and handed it straight here; going back to the stock
     # screen for the idle countdown first would undo the moment.

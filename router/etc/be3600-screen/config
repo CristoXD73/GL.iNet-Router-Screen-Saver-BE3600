@@ -12,6 +12,11 @@ IDLE_SECONDS=10
 # Which player. "auto" prefers the native one and falls back to Lua; "lua" forces Lua.
 PLAYER_ENGINE="auto"
 
+# Say hello when the router starts up: the eyes wake up on the strip while the fan revs, then
+# it goes straight into the screensaver. Once per boot, not on every restart of the service.
+# The rev keeps quiet hours (FAN_CHIME_QUIET); the eyes play either way.  be3600-anim hello
+HELLO_ON_BOOT=1
+
 # ---- touch -----------------------------------------------------------------------------------
 
 # A second tap within this many seconds counts as a double-tap. Fractions allowed.
