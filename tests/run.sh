@@ -1,20 +1,54 @@
 #!/bin/sh
 #
-# Project tests. Needs: sh, python3 and a Lua 5.1 interpreter (the router runs 5.1).
-# Run from anywhere:   sh tests/run.sh          (LUA=lua5.1 sh tests/run.sh on some systems)
+# Project tests, on Linux or macOS. Needs: sh, python3 (with Pillow), cc and a Lua 5.1
+# interpreter (the router runs 5.1; LuaJIT will do). Setup for each: docs/TESTING.md
+# Run from anywhere:   sh tests/run.sh          (LUA=lua5.1 sh tests/run.sh to pick one)
 #
 # Everything runs on an ordinary computer; no router is needed.
 
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
-LUA="${LUA:-lua}"
+# A Lua 5.1 like the router's: lua5.1 (Debian/Ubuntu), lua-5.1, LuaJIT (5.1-compatible; on a
+# Mac: brew install luajit), or a plain "lua" that is 5.1.
+if [ -z "${LUA:-}" ]; then
+    for L in lua5.1 lua-5.1 luajit; do
+        command -v "$L" >/dev/null 2>&1 && { LUA="$L"; break; }
+    done
+    : "${LUA:=lua}"
+fi
 # The players' and helpers' test hooks (fake framebuffer, fake ssh, ...) only work with this set.
 BE3600_TESTING=1
 export BE3600_TESTING
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 FAILS=0
+
+# macOS has no timeout(1) (the router's BusyBox and Linux do). Stand one in: same exit code 124.
+if ! command -v timeout >/dev/null 2>&1; then
+    mkdir -p "$TMP/bin"
+    if command -v gtimeout >/dev/null 2>&1; then
+        ln -s "$(command -v gtimeout)" "$TMP/bin/timeout"
+    else
+        cat > "$TMP/bin/timeout" <<'PY'
+#!/usr/bin/env python3
+import subprocess, sys
+p = subprocess.Popen(sys.argv[2:])
+try:
+    sys.exit(p.wait(timeout=float(sys.argv[1])))
+except subprocess.TimeoutExpired:
+    p.terminate()
+    p.wait()
+    sys.exit(124)
+PY
+        chmod +x "$TMP/bin/timeout"
+    fi
+    PATH="$TMP/bin:$PATH"
+fi
+
+# The native player is Linux C. On a Mac it builds against the stand-ins in tests/compat.
+CFLAGS_NATIVE=""
+[ "$(uname -s)" = "Darwin" ] && CFLAGS_NATIVE="-I tests/compat -include tests/compat/macos.h"
 
 pass() { printf '  ok    %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; FAILS=$((FAILS + 1)); }
@@ -186,7 +220,8 @@ if cmp -s "$TMP/fb1" "$TMP/fb2" && [ -s "$TMP/fb1" ]; then pass "player shows th
 
 echo "== native player (same source, built for this computer) =="
 if command -v cc >/dev/null 2>&1; then
-    if cc -O2 -Wall -Wextra -Werror -o "$TMP/player-native" native/be3600-player.c 2>"$TMP/cc.log"; then
+    # shellcheck disable=SC2086  # CFLAGS_NATIVE is a list of flags
+    if cc -O2 -Wall -Wextra -Werror $CFLAGS_NATIVE -o "$TMP/player-native" native/be3600-player.c 2>"$TMP/cc.log"; then
         pass "compiles with no warnings"
         : > "$TMP/fb3"; : > "$TMP/fb4"
         BE3600_FB="$TMP/fb3" BE3600_LOOPS=1 "$TMP/player-native" "$TMP/motion.bea"  >/dev/null 2>&1
@@ -473,14 +508,20 @@ export TOUCH_DEVICE="$TMP/fakeinput"
 # rather than a stand-in. Skips cleanly if it is missing and cannot be created
 # (no root) rather than failing the whole suite.
 CREATED_SYSTEM_LUA=0
+LUA_ABS="$(command -v "$LUA" 2>/dev/null)"
 if [ ! -e /usr/bin/lua ]; then
-    LUA_ABS="$(command -v "$LUA" 2>/dev/null)"
     if [ -n "$LUA_ABS" ] && ln -s "$LUA_ABS" /usr/bin/lua 2>/dev/null; then
         CREATED_SYSTEM_LUA=1
+    elif [ -n "$LUA_ABS" ]; then
+        # No root, or a Mac (/usr/bin is read-only there): the same function, with only the
+        # interpreter's path pointed at this computer's Lua.
+        sed "s|/usr/bin/lua |$LUA_ABS |" "$TMP/tap.sh" > "$TMP/tap-here.sh"
+        # shellcheck source=/dev/null
+        . "$TMP/tap-here.sh"
     fi
 fi
 
-if [ -e /usr/bin/lua ]; then
+if [ -e /usr/bin/lua ] || [ -n "$LUA_ABS" ]; then
 
     # A touch-down event: 16 zero bytes (timestamp, unused here), EV_ABS(3),
     # ABS_MT_TRACKING_ID(57), value 0.
@@ -514,7 +555,7 @@ sys.stdout.buffer.write(b'\\0' * 16 + struct.pack('<HHi', 3, 57, 0))
     if second_tap_follows; then pass "a malformed window value still works (falls back to a default)"; else fail "a malformed window value broke detection"; fi
     wait "$WRITER" 2>/dev/null
 else
-    echo "  skip  /usr/bin/lua is not available here and could not be created (no root)"
+    echo "  skip  no Lua interpreter to run the touch helper with"
 fi
 
 [ "$CREATED_SYSTEM_LUA" = 1 ] && rm -f /usr/bin/lua

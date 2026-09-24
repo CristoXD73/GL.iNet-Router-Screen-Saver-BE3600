@@ -262,20 +262,40 @@ def t_drag_snaps_back():
 
 
 def t_fling():
-    r = Rig(["a", "b", "c"])
-    try:
-        r.down(38, 100)
-        time.sleep(0.012)
-        r.move(38, 108)
-        time.sleep(0.012)
-        r.move(38, 122)
-        time.sleep(0.012)
-        r.move(38, 130)
-        r.up()
-        time.sleep(0.6)
-        check(r.screen() == frame_of(1), "a short quick flick still switches")
-    finally:
-        r.close()
+    # A fake touchscreen (a FIFO) has no event times, so the player times each event as it
+    # arrives, and a flick is 30 px faster than FLING_SPEED (0.45 px/ms). The gaps are timed
+    # by the clock rather than by sleep(), which a busy virtual machine can stretch many times
+    # over. A try that still went out slower than a flick does not count; one that went out
+    # quickly must switch, every time. A machine that never manages one cannot test this.
+    def pause(s):
+        end = time.monotonic() + s
+        while time.monotonic() < end:
+            pass
+
+    slowest = 0.0
+    for attempt in range(5):
+        r = Rig(["a", "b", "c"])
+        try:
+            r.down(38, 100)
+            t0 = time.monotonic()
+            pause(0.012)
+            r.move(38, 108)
+            pause(0.012)
+            r.move(38, 122)
+            pause(0.012)
+            r.move(38, 130)
+            r.up()
+            sent_in = time.monotonic() - t0
+            time.sleep(0.6)
+            if sent_in > 0.05:
+                slowest = max(slowest, sent_in)
+                continue                    # sent too slowly to be a flick; try again
+            check(r.screen() == frame_of(1), "a short quick flick still switches",
+                  "sent in %.0f ms" % (sent_in * 1000))
+            return
+        finally:
+            r.close()
+    print("  skip  a short quick flick: this machine never sent one fast enough (%.0f ms)" % (slowest * 1000))
 
 
 def t_previous():

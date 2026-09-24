@@ -113,7 +113,7 @@ collect_wifi() {
     awk -F'|' '
         NR == FNR { split($0, a, " "); name[tolower(a[2])] = (a[4] == "*" ? a[2] : a[4]); ip[tolower(a[2])] = a[3]; next }
         { n = ($1 in name) ? name[$1] : $1; i = ($1 in ip) ? ip[$1] : "-"; gsub(/\|/, "", n); print "client|" n "|" i "|" $2 "|" $3 }' "$LEASES" "$D/stations.tmp" > "$D/wifi.body"
-    { printf 'count=%s\n' "$(wc -l < "$D/wifi.body")"; cat "$D/wifi.body"; } | put wifi.txt
+    { printf 'count=%s\n' "$(($(wc -l < "$D/wifi.body")))"; cat "$D/wifi.body"; } | put wifi.txt
     # who is new since the last look (not on the first look after starting)
     NOWSEEN="$(cut -d'|' -f1 "$D/stations.tmp" | sort | tr '\n' ' ')"
     if [ "$WIFI_FIRST" = 0 ]; then
@@ -339,20 +339,20 @@ collect_anims() {
 }
 
 # ---------------------------------------------------------------- the loop
-N=0
+TICK=0   # the loop's own counter: the collectors use N for names of their own
 while :; do
-    [ "$NEED_PING" = 1 ] && [ $((N % PING_INTERVAL)) -eq 0 ] && collect_ping
-    [ "$NEED_WIFI" = 1 ] && [ $((N % 10)) -eq 0 ] && collect_wifi
-    [ "$NEED_VPN" = 1 ] && [ $((N % 10)) -eq 2 ] && collect_vpn
-    [ "$NEED_GUEST" = 1 ] && [ $((N % 5)) -eq 1 ] && collect_guest
-    [ "$NEED_QR" = 1 ] && [ $((N % 60)) -eq 0 ] && collect_qr
-    [ "$NEED_WEATHER" = 1 ] && [ $((N % 900)) -eq 3 ] && collect_weather
-    [ "$NEED_CUSTOM" = 1 ] && [ $((N % 5)) -eq 4 ] && collect_custom
-    [ "$NEED_PATH" = 1 ] && [ $((N % 15)) -eq 3 ] && collect_path
-    [ "$NEED_TALKERS" = 1 ] && [ $((N % 3)) -eq 0 ] && collect_talkers
-    [ "$NEED_CHIMES" = 1 ] && [ $((N % 30)) -eq 0 ] && collect_chimes
-    [ "$NEED_ANIMS" = 1 ] && [ $((N % 30)) -eq 5 ] && collect_anims
-    [ "$ONCE" = 1 ] && [ "$N" -ge "$ONCE_N" ] && break
-    N=$((N + 1))
+    [ "$NEED_PING" = 1 ] && [ $((TICK % PING_INTERVAL)) -eq 0 ] && collect_ping
+    [ "$NEED_WIFI" = 1 ] && [ $((TICK % 10)) -eq 0 ] && collect_wifi
+    [ "$NEED_VPN" = 1 ] && [ $((TICK % 10)) -eq 2 ] && collect_vpn
+    [ "$NEED_GUEST" = 1 ] && [ $((TICK % 5)) -eq 1 ] && collect_guest
+    [ "$NEED_QR" = 1 ] && [ $((TICK % 60)) -eq 0 ] && collect_qr
+    [ "$NEED_WEATHER" = 1 ] && [ $((TICK % 900)) -eq 3 ] && collect_weather
+    [ "$NEED_CUSTOM" = 1 ] && [ $((TICK % 5)) -eq 4 ] && collect_custom
+    [ "$NEED_PATH" = 1 ] && [ $((TICK % 15)) -eq 3 ] && collect_path
+    [ "$NEED_TALKERS" = 1 ] && [ $((TICK % 3)) -eq 0 ] && collect_talkers
+    [ "$NEED_CHIMES" = 1 ] && [ $((TICK % 30)) -eq 0 ] && collect_chimes
+    [ "$NEED_ANIMS" = 1 ] && [ $((TICK % 30)) -eq 5 ] && collect_anims
+    [ "$ONCE" = 1 ] && [ "$TICK" -ge "$ONCE_N" ] && break
+    TICK=$((TICK + 1))
     sleep 1
 done

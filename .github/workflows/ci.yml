@@ -44,6 +44,20 @@ jobs:
       - name: Tests
         run: LUA=lua5.1 sh tests/run.sh
 
+  # The same suite on a Mac: BSD tools, bash 3.2 as /bin/sh, LuaJIT for Lua 5.1, and the
+  # native player built against tests/compat. See docs/TESTING.md.
+  macos:
+    name: Shell, Lua and animation-format tests (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install LuaJIT (runs Lua 5.1), Pillow and ShellCheck
+        run: brew install luajit pillow shellcheck
+
+      - name: Tests
+        run: sh tests/run.sh
+
   windows:
     name: Windows scripts parse, stay ASCII, and work
     runs-on: windows-latest
