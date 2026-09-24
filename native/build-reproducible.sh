@@ -21,7 +21,7 @@ SNAPSHOT="20250915T000000Z"                                                     
 
 command -v docker >/dev/null 2>&1 || { echo "Docker is needed for the reproducible build." >&2; exit 1; }
 
-OUT="router/usr/bin/be3600-player"
+OUT="$PWD/router/usr/bin/be3600-player"   # absolute: docker only bind-mounts absolute paths
 [ "$1" = "--check" ] && OUT="$(mktemp)"
 
 docker run --rm -v "$PWD:/repo:ro" -v "$OUT:/out/be3600-player" -e SNAPSHOT="$SNAPSHOT" "$IMAGE" \
