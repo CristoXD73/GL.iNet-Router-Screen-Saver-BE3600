@@ -385,6 +385,13 @@ page_ok() {   # a page name we know
 
 pages_now() { P="$(conf_get PAGES)"; echo "${P:-animations}"; }
 
+# Your own choice of pages. PAGES_CHOSEN marks it as yours, so an update of the screen saver never
+# swaps it for a newer default (router-install.sh only fills in pages nobody has chosen).
+pages_save() {
+    conf_set PAGES "$1"
+    conf_set PAGES_CHOSEN 1
+}
+
 pages_apply() {
     rm -f "$DATA/page"
     if running; then "$SVC" restart; echo "restarted the screensaver to apply it."; fi
@@ -402,9 +409,22 @@ pages_list() {
     echo "change with:  be3600-anim pages set \"animations clock vitals\"   (or add NAME / remove NAME / reset)"
 }
 
+# For Motion Studio (through Studio Link): one line per page, tab-separated.
+#   order<TAB>the pages shown, in order
+#   * or -<TAB>NAME<TAB>what it is            (* = on)
+pages_plain() {
+    NOW="$(pages_now)"
+    printf 'order\t%s\n' "$NOW"
+    for P in animations $PAGE_LIST; do
+        case " $NOW " in *" $P "*) M="*" ;; *) M="-" ;; esac
+        printf '%s\t%s\t%s\n' "$M" "$P" "$(page_desc "$P")"
+    done
+}
+
 pages_cmd() {
     case "$1" in
-        ''|list) pages_list ;;
+        ''|list) if [ "$2" = "--plain" ]; then pages_plain; else pages_list; fi ;;
+        --plain) pages_plain ;;
         set)
             shift
             [ $# -ge 1 ] || { echo "usage: be3600-anim pages set \"animations clock ...\""; exit 1; }
@@ -413,14 +433,14 @@ pages_cmd() {
                 page_ok "$P" || { echo "unknown page '$P'. Run: be3600-anim pages"; exit 1; }
                 NEW="$NEW $P"
             done
-            conf_set PAGES "${NEW# }"
+            pages_save "${NEW# }"
             echo "pages: ${NEW# }"
             pages_apply
             ;;
         add)
             page_ok "$2" || { echo "unknown page '$2'. Run: be3600-anim pages"; exit 1; }
             case " $(pages_now) " in *" $2 "*) echo "'$2' is already on."; exit 0 ;; esac
-            conf_set PAGES "$(pages_now) $2"
+            pages_save "$(pages_now) $2"
             echo "pages: $(pages_now)"
             pages_apply
             ;;
@@ -428,12 +448,12 @@ pages_cmd() {
             NEW=""
             for P in $(pages_now); do [ "$P" = "$2" ] || NEW="$NEW $P"; done
             [ -n "$NEW" ] || { echo "that would leave no pages; use: be3600-anim pages reset"; exit 1; }
-            conf_set PAGES "${NEW# }"
+            pages_save "${NEW# }"
             echo "pages: ${NEW# }"
             pages_apply
             ;;
         reset)
-            conf_set PAGES "animations"
+            pages_save "animations"
             echo "pages: animations"
             pages_apply
             ;;

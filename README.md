@@ -35,13 +35,17 @@ admin password.
 
 </div>
 
-**2. Double-click it.** Mac / Linux: `python3 studio-link.py`. That one file:
+**2. Double-click it** (Windows). **Mac:** open Terminal, type `python3 ` (with the space), drag
+the downloaded `studio-link.py` into the window and press Return. Linux: `python3 studio-link.py`.
+That one file:
 
 * finds your router,
 * asks for its admin password once,
 * installs the screen saver if the router does not have it,
 * offers to remember this computer, encrypted with a passphrase you choose,
-* **opens Motion Studio, already connected** — that is where you design.
+* **opens Motion Studio, already connected** — that is where you design. On a Mac it opens the
+  copy Studio Link serves itself, at `http://127.0.0.1:8791/`, because Safari never lets the website
+  talk to a helper on your own computer (it works in Chrome, Edge and Firefox too).
 
 The install ends with the eyes waking up on the router's screen while the fan
 revs under them, so you know it took. Then **Compile** in Motion Studio sends
@@ -68,7 +72,9 @@ It appears after a few idle seconds and survives reboots.
 **Windows:** Click **Code → Download ZIP** above, unzip it, double-click
 **`Install.cmd`**, and type your router's admin password when it asks.
 
-**macOS / Linux:** `./install.sh`
+**macOS:** double-click **`Install.command`** (the first time, macOS may say it is from an
+unidentified developer: right-click it → *Open* → *Open*). Or in Terminal: `./install.sh`.
+**Linux:** `./install.sh`
 
 <img src="docs/assets/steps.svg" alt="1. Download and unzip. 2. Double-click Install. 3. Enter your router password." width="720">
 </details>
@@ -120,9 +126,10 @@ by itself:
 
 Windows may warn about the downloaded `.cmd` file (choose *Keep* / *Run anyway*);
 it's plain text you can open in Notepad first. If you cloned this repo you can
-double-click `Studio-Link.cmd` (macOS/Linux: `./studio-link.sh`) instead; same thing.
+double-click `Studio-Link.cmd` (macOS: `Studio-Link.command`; Linux: `./studio-link.sh`) instead; same thing.
 If Studio Link isn't running, or your browser blocks it, the old way still works:
-save the file and drag it onto **`Set-Animation.cmd`** (or run `./set-animation.sh`).
+save the file and drag it onto **`Set-Animation.cmd`** (macOS: double-click `Set-Animation.command`
+and drag the file into its window; Linux: `./set-animation.sh`).
 
 **The router keeps up to 3**, so you can switch back later, and **each loops for
 at most 25 s**. The same name replaces the old one. Manage them from Motion
@@ -166,7 +173,11 @@ helper that does it for the page, using the same check-then-SSH steps as
 * It refuses a router address that isn't a plain address, and asks before sending a
   password to an address outside a home or office network.
 * Your browser may ask to allow "devices on your local network". Choose Allow.
-  Some browsers may block it entirely; then use `Set-Animation` as above.</details>
+  Some browsers may block it entirely; then use `Set-Animation` as above.
+* **Safari** blocks the website from reaching Studio Link at all (it treats `http://127.0.0.1` as
+  insecure content). That is why, on a Mac, Studio Link serves Motion Studio itself at
+  `http://127.0.0.1:8791/` and opens that; only the page's own files are served, to this computer only.
+  (`--studio web` opens the website instead, `--studio local` the served copy on any system.)</details>
 <details>
 <summary><b>Smaller files, and making animations without the Studio</b></summary>
 
@@ -229,13 +240,19 @@ screen shows live pages, set in Inter and rendered by the router:
 
 <img src="docs/assets/pages.png" alt="The screen pages: clock, network speed, vitals rings, router info, Wi-Fi clients, internet, data usage, VPN, health, Pomodoro timer, stopwatch, message, guest Wi-Fi switch, Wi-Fi QR code, weather and a custom page" width="640">
 
-Pages are off until you choose them:
+Every page that needs no setting up comes on with the install. Two wait for you: `wifiqr` (it shows
+a Wi-Fi password to anyone who looks) and `weather` (it needs your location first). **Choose your
+own in Motion Studio**: with Studio Link connected, *Screen pages* lists them all — untick the ones
+you do not want and press **Save pages**. Or on the router:
 
 ```sh
 be3600-anim pages                                            # the list, with what each one is
 be3600-anim pages set "animations clock netspeed vitals internet"
 be3600-anim pages reset                                      # back to animations only
 ```
+
+Your choice is kept when you update or reinstall. (A router set up before pages came on by default
+gets them on its next update, unless someone had already chosen its pages.)
 
 | Page | What it shows |
 |---|---|
@@ -373,7 +390,9 @@ It runs as root, at most five seconds each time, and only its first 2 KB is used
 * **Fast full-screen motion may tear a little** — this display has no way to
   avoid it ([why](docs/TEARING.md)); gentle motion looks best.
 * Windows was tested on Windows 11; macOS/Linux only in a Linux container,
-  **not on a real Mac**.
+  **not on a real Mac**. On macOS 15 or later, if nothing can find the router, check *System
+  Settings → Privacy & Security → Local Network* for Terminal (see
+  [troubleshooting](docs/TROUBLESHOOTING.md#on-a-mac)).
 
 ## For the curious
 
@@ -385,9 +404,9 @@ It runs as root, at most five seconds each time, and only its first 2 KB is used
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Fixes for common problems |
 
 ```
-Install.cmd / install.sh          one-click installer
-Set-Animation.cmd / set-animation.sh   drag-and-drop animation swap
-Studio-Link.cmd / studio-link.sh       lets Motion Studio send animations to the router
+Install.cmd / .command / install.sh          one-click installer (Windows / Mac / Linux)
+Set-Animation.cmd / .command / set-animation.sh   drag-and-drop animation swap
+Studio-Link.cmd / .command / studio-link.sh       lets Motion Studio send animations to the router
 studio/                            the browser tools: get.html (download),
                                    index.html (Motion), fan.html (Fan)
 animations/                        the bundled animation

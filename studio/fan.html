@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- Loads only its own files, and talks only to Studio Link on this computer. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src http://127.0.0.1:8791 blob:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'self' http://127.0.0.1:8791 blob:; base-uri 'none'; form-action 'none'">
 <title>Fan Studio - chimes on the BE3600's cooling fan</title>
 <meta name="description" content="The GL-BE3600 has no speaker, so its cooling fan is the instrument. Design a chime by dragging duty-cycle bars, hear it simulated against the fan's measured spin-up and coast-down, and send it to the router.">
 <meta property="og:type" content="website">
@@ -412,7 +412,9 @@ document.getElementById("steps").addEventListener("change", function () { push()
 /* ---------------------------------------------------------------- straight onto the router
  * The same Studio Link that carries animations carries chimes: one POST, and the router runs
  * be3600-fan save. Without it, Save .chime writes the file and you copy it across yourself. */
-var LINK = "http://127.0.0.1:8791", TOKEN = null, linkOk = false;
+/* Served by Studio Link itself (on a Mac), it is on the same address as the page. */
+var LINK = (window.location.protocol === "http:" && /^(127\.0\.0\.1|localhost)$/.test(window.location.hostname))
+  ? window.location.origin : "http://127.0.0.1:8791", TOKEN = null, linkOk = false;
 var NO_LINK = "Studio Link is not running. Save .chime writes the file; put it in "
             + "/etc/be3600-screen/chimes.d on the router, or run: be3600-fan save NAME \"steps\"";
 
@@ -452,7 +454,15 @@ function checkLink() {
     } else {
       setLine("", NO_LINK);
     }
-  }).catch(function () { setLine("", NO_LINK); });
+  }).catch(function () {
+    var ua = navigator.userAgent || "";
+    if (window.location.protocol === "https:" && /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Firefox/.test(ua)) {
+      setLine("", "Safari cannot connect this website to Studio Link. Start Studio Link and use the copy of this page it opens "
+                + "(http://127.0.0.1:8791/fan.html), or use Chrome, Edge or Firefox. " + NO_LINK);
+    } else {
+      setLine("", NO_LINK);
+    }
+  });
 }
 
 sendBtn.onclick = function () {

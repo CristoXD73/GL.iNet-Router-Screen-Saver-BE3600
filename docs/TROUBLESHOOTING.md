@@ -84,9 +84,9 @@ installer asks for the right address and tries again.
 
 Studio Link is the small helper that lets Motion Studio's drop zone send files to
 your router. Use the **Download Studio Link** buttons on the page (Windows: double-click
-the file; Mac/Linux: `python3 studio-link.py`), type your router password in its window,
+the file; Mac: `python3 studio-link.py` in Terminal, see [On a Mac](#on-a-mac); Linux: `python3 studio-link.py`), type your router password in its window,
 and leave the window open. The square connects by itself within a few seconds and then
-shows your router's three slots. (In a cloned repo, `Studio-Link.cmd` / `./studio-link.sh`
+shows your router's three slots. (In a cloned repo, `Studio-Link.cmd` / `Studio-Link.command` / `./studio-link.sh`
 does the same.) Windows may warn about the downloaded `.cmd`; choose *Keep* and *Run anyway*.
 
 **Connected, but the slots say "Empty" and it isn't right?** Close Studio Link and start it
@@ -97,6 +97,11 @@ holds its secret token. It opens a new Motion Studio tab with the token a few se
 starts, and any other Motion Studio tab you already have open pairs by itself. If no tab
 opened, close Studio Link and start it again. If you restarted Studio Link, the old token is
 gone; the new tab pairs again automatically.
+
+**On a Mac, "Safari cannot connect this website to Studio Link"?** Safari never lets a secure
+(https) website talk to a helper on your own computer. Studio Link therefore serves Motion
+Studio itself on a Mac and opens `http://127.0.0.1:8791/`; use that tab (or bookmark it — it
+works whenever Studio Link is running). The website still works in Chrome, Edge and Firefox.
 
 **"This Studio Link is out of date"?** Older versions don't use the token and are no longer
 accepted. Download the new one from the page.
@@ -144,6 +149,29 @@ replace that one, or remove one first: `be3600-anim list`, then
 That's the fit mode in the GIF tab: **Fill** crops the edges to cover the strip (use
 **Focus** to choose which part stays), **Fit** shows the whole picture with bars in the
 background colour, and **Stretch** squashes it to the strip's shape.
+
+### On a Mac
+
+* **Double-clicking `studio-link.py` opens a text editor.** macOS opens `.py` files for editing.
+  Open Terminal, type `python3 ` (with the space), drag the file into the window, press Return.
+  From a clone or the ZIP, double-click `Studio-Link.command`, `Install.command` or
+  `Set-Animation.command` instead; the first time, right-click → *Open* → *Open* if macOS says
+  it is from an unidentified developer.
+* **It asks to install "command line developer tools".** That is how macOS provides `python3`.
+  Click *Install*, wait for it to finish, then start Studio Link again.
+* **Nothing can find the router, or "No route to host".** On macOS 15 (Sequoia) and later an app
+  needs permission to reach devices on your network. Open *System Settings → Privacy & Security
+  → Local Network* and switch on Terminal (or iTerm, VS Code, whichever you run it in), then
+  quit and reopen that app. You can also give the address directly:
+  `python3 studio-link.py --router 192.168.8.1`.
+* **The live pages or the welcome at boot are missing.** Check which version the router has:
+  `cat /etc/be3600-screen/version` over SSH, and compare it with the one Studio Link carries
+  (it offers to update when they differ). A copy of this project downloaded before
+  21 September 2026, including the `v1.0` release, predates the welcome at every boot; download
+  Studio Link again from the page and let it update the router.
+* **Dropping a file into the Set-Animation window says "I can't find that file".** Fixed: the
+  path Terminal types for a dropped file (with `\ `, `\(`, `\'` and so on) is now read back
+  correctly. Update your copy.
 
 ## Everyday problems
 

@@ -67,7 +67,42 @@ TOKEN_HEADER = "X-Studio-Token"
 STATE_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
                           "be3600-screensaver", "router")
 KEY_FILE = os.path.join(os.path.dirname(STATE_FILE), "studio-key")     # the "remember this computer" key
-KEY_COMMENT = "be3600-studio-link-" + re.sub(r"[^A-Za-z0-9_-]+", "-", socket.gethostname() or "computer")[:30]
+KEY_COMMENT_SHAPE = re.compile(r"^be3600-studio-link-[A-Za-z0-9_-]{1,30}$")
+
+
+def computer_name(platform=None):
+    """A name for this computer that stays put. On a Mac the network name (gethostname) follows
+    whatever network it joins ("MacBook-Pro.local" at home, "dhcp-10-2-3-4" at work), so the
+    Sharing name is asked for instead; the key's label and its keychain entry depend on it."""
+    if (platform or sys.platform) == "darwin":
+        for what in ("LocalHostName", "ComputerName"):
+            try:
+                r = subprocess.run(["scutil", "--get", what], capture_output=True, text=True, timeout=3)
+                if r.returncode == 0 and r.stdout.strip():
+                    return r.stdout.strip()
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return socket.gethostname() or "computer"
+
+
+def fresh_key_comment(platform=None):
+    return "be3600-studio-link-" + (re.sub(r"[^A-Za-z0-9_-]+", "-", computer_name(platform))[:30] or "computer")
+
+
+def key_comment(pub_path=None, platform=None):
+    """The label of this computer's remembered key: the one it was made with (read back from the
+    .pub file, so a later change of name cannot orphan it), or a fresh one for a new key."""
+    try:
+        with open(pub_path or KEY_FILE + ".pub") as f:
+            parts = f.read().split()
+        if len(parts) >= 3 and KEY_COMMENT_SHAPE.match(parts[2]):
+            return parts[2]
+    except OSError:
+        pass
+    return fresh_key_comment(platform)
+
+
+KEY_COMMENT = key_comment()
 VAULT_SERVICE = "be3600-studio-link"
 AUTH_KEYS = "/etc/dropbear/authorized_keys"
 DEFAULT_STUDIO_URL = "https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/"
@@ -79,8 +114,19 @@ if not re.match(r"^(https://[A-Za-z0-9.-]+(:\d+)?/[^\s#]*|http://(localhost|127\
 # (version id, base64 of a .tar.gz); from a clone of the repo they are packed on the fly.
 PAYLOAD = None  # __PAYLOAD__
 
+# Motion Studio itself (studio/index.html, fan.html and what they load), packed the same way, so
+# Studio Link can serve it from this computer at http://127.0.0.1:PORT/. Safari, the Mac's own
+# browser, never lets an https page talk to http://127.0.0.1 (WebKit treats it as mixed content),
+# so on a Mac the website cannot reach Studio Link; the copy served here can, in any browser.
+STUDIO = None  # __STUDIO__
+STUDIO_FILES = ("index.html", "fan.html", "shared.js", "shared.css", "OPEN_SOURCE.md")
+STUDIO_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8", ".md": "text/plain; charset=utf-8"}
+
 
 class Config:
+    local_studio = False                           # open the copy of Motion Studio served here
+    port = 8791
     router = None
     key = None
     key_pass = None                                # the remembered key's passphrase (from the keychain), memory only
@@ -93,6 +139,7 @@ class Config:
     found = None
     token = None                                   # this run's secret; the page must present it
     paired = False                                 # has a page proved it holds the token yet?
+    stale_key = False                              # a remembered key is here, but it no longer gets in
 
 
 def origin_allowed(origin):
@@ -156,6 +203,15 @@ def ssh_open(ip, timeout=1.5):
             return True
     except OSError:
         return False
+
+
+def local_network_hint(platform=None):
+    """On macOS 15 and later a program needs the Local Network permission to reach the router;
+    without it every address on the network fails at once with "No route to host"."""
+    if (platform or sys.platform) != "darwin":
+        return ""
+    return ("On a Mac, also check System Settings > Privacy & Security > Local Network: the app you run this "
+            "in (Terminal, iTerm, VS Code...) must be switched on there, or it cannot reach the router.")
 
 
 def default_gateway():
@@ -358,6 +414,62 @@ def send_chime(name, steps):
                                               "or set FAN_CHIME_TAPS=%s for five taps." % (name, name)}
 
 
+SAFE_PAGES = re.compile(r"^[A-Za-z0-9:._-]{1,40}( [A-Za-z0-9:._-]{1,40}){0,40}$")
+
+
+def parse_pages(text):
+    """be3600-anim pages --plain -> (order, [{name, on, about}]) or (None, None)."""
+    order, pages = None, []
+    for line in (text or "").splitlines():
+        p = line.rstrip("\r").split("\t")
+        if p[0] == "order" and len(p) >= 2:
+            order = p[1].split()
+        elif p[0] in ("*", "-") and len(p) >= 3 and SAFE_NAME.match(p[1]):
+            pages.append({"name": p[1], "on": p[0] == "*", "about": p[2]})
+    return (order, pages) if order is not None and pages else (None, None)
+
+
+def get_pages():
+    """The screen pages the router can show, and which are on (Motion Studio's widget list)."""
+    if Config.dry_run:
+        return 200, "OK", {"ok": True, "dryRun": True, "order": ["animations"],
+                           "pages": [{"name": "animations", "on": True, "about": "your saved animations"}]}
+    if not quiet_login():
+        return 200, "OK", {"ok": False, "needPassword": True,
+                           "message": "Studio Link was started without your router password, so it cannot look at the pages."}
+    ip = find_router()
+    if not ip:
+        return 502, "Bad Gateway", {"ok": False, "message": "Could not find your router."}
+    code, out = run_ssh(ip, "be3600-anim pages --plain")
+    if code == 255 or login_failed(out):
+        return 502, "Bad Gateway", {"ok": False, "message": "Could not log in to the router."}
+    order, pages = parse_pages(out)
+    if order is None:
+        return 502, "Bad Gateway", {"ok": False, "message": "The screen saver on the router is too old to choose pages from here. "
+                                    "Close Studio Link and start it again; it will offer to update it."}
+    return 200, "OK", {"ok": True, "order": order, "pages": pages}
+
+
+def set_pages(text):
+    """be3600-anim pages set "animations clock ..." -> (status, reason, dict)."""
+    names = " ".join((text or "").split())
+    if not SAFE_PAGES.match(names):
+        return 400, "Bad Request", {"ok": False, "message": "Choose at least one page."}
+    if Config.dry_run:
+        return 200, "OK", {"ok": True, "dryRun": True, "message": "Dry run: nothing was changed."}
+    ip = find_router()
+    if not ip:
+        return 502, "Bad Gateway", {"ok": False, "message": "Could not find your router."}
+    say("pages", names)
+    # names has already been checked to be page names and single spaces, so it cannot escape the quotes.
+    code, out = run_ssh(ip, "be3600-anim pages set '%s'" % names)
+    if code == 255 or login_failed(out):
+        return 502, "Bad Gateway", {"ok": False, "message": "Could not log in to the router."}
+    if code != 0:
+        return 422, "Unprocessable Entity", {"ok": False, "message": last_line(out) or "The router refused."}
+    return 200, "OK", {"ok": True, "message": "Saved. The router's screen now shows: " + names}
+
+
 def send_file(data, name):
     """The same steps as set-animation.sh. -> (http status, reason, dict)."""
     say("got", "'%s' from Motion Studio (%d KB)" % (name, (len(data) + 1023) // 1024))
@@ -417,6 +529,51 @@ def send_file(data, name):
 # ---------------------------------------------------------------------------------------
 # The little web server
 # ---------------------------------------------------------------------------------------
+
+_studio_cache = {}
+
+
+def studio_file(path):
+    """-> (bytes, content type) of a Motion Studio file this helper may serve, or None.
+    Only the files the pages load: nothing else on this computer can be asked for."""
+    if not _studio_cache:
+        found = {}
+        if STUDIO:
+            import base64
+            import gzip
+            import io
+            import tarfile
+            raw = gzip.decompress(base64.b64decode("".join(STUDIO[1].split())))
+            with tarfile.open(fileobj=io.BytesIO(raw), mode="r") as t:
+                for m in t.getmembers():
+                    if m.isfile():
+                        found[m.name] = t.extractfile(m).read()
+        else:
+            base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "studio")
+            for rel in studio_names(base):
+                with open(os.path.join(base, rel), "rb") as f:
+                    found[rel] = f.read()
+        _studio_cache.update(found)
+        _studio_cache.setdefault("", b"")                 # remember that it was loaded, even if empty
+    rel = path.lstrip("/") or "index.html"
+    data = _studio_cache.get(rel)
+    if not rel or data is None:
+        return None
+    return data, STUDIO_TYPES.get(os.path.splitext(rel)[1], "application/octet-stream")
+
+
+def studio_names(base):
+    """The Motion Studio files to serve, relative to studio/ (also what the download packs)."""
+    names = [n for n in STUDIO_FILES if os.path.isfile(os.path.join(base, n))]
+    vendor = os.path.join(base, "vendor")
+    if os.path.isdir(vendor):
+        names += ["vendor/" + n for n in sorted(os.listdir(vendor)) if n.endswith(".js")]
+    return names
+
+
+def studio_address(port):
+    return "http://127.0.0.1:%d/" % port
+
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -484,6 +641,30 @@ class Handler(BaseHTTPRequestHandler):
         if cors is None:
             return
         path = urlsplit(self.path).path
+        if path.startswith("/downloads/"):
+            # The copy served here has no downloads of its own; they live on the website.
+            self.send_response(302, "Found")
+            self.send_header("Location", DEFAULT_STUDIO_URL + path.lstrip("/"))
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            return
+        static = studio_file(path) if path not in ("/ping", "/library", "/pages") else None
+        if static:
+            body, ctype = static
+            self.send_response(200, "OK")
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+            self.close_connection = True
+            return
         if path == "/ping":
             # Without the token this only says "I am Studio Link, and I need pairing": no router
             # address, nothing else. With it, the page gets the full picture.
@@ -493,10 +674,14 @@ class Handler(BaseHTTPRequestHandler):
             Config.paired = True
             self._reply(200, "OK", {"ok": True, "app": "be3600-studio-link", "version": 3, "authed": True,
                                     "dryRun": Config.dry_run, "sent": Config.sent,
-                                    "router": Config.router or Config.found, "loggedIn": quiet_login()}, cors)
+                                    "router": Config.router or Config.found, "loggedIn": quiet_login(),
+                                    "pages": True}, cors)
         elif path == "/library":
             if self._authed(cors):
                 self._locked(cors, get_library)
+        elif path == "/pages":
+            if self._authed(cors):
+                self._locked(cors, get_pages)
         else:
             self._reply(404, "Not Found", {"ok": False, "message": "Not found."}, cors)
 
@@ -510,6 +695,18 @@ class Handler(BaseHTTPRequestHandler):
         if parts.path in ("/use", "/remove"):
             name = (query.get("name") or [""])[0]
             self._locked(cors, lambda: router_command(parts.path[1:], name))
+            return
+
+        if parts.path == "/pages":
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                n = 0
+            if n <= 0 or n > 2048:
+                self._reply(400, "Bad Request", {"ok": False, "message": "Choose at least one page."}, cors)
+                return
+            body = self.rfile.read(n).decode("utf-8", "replace")
+            self._locked(cors, lambda: set_pages(body))
             return
 
         if parts.path == "/chime":
@@ -554,6 +751,13 @@ class BoundedServer(ThreadingHTTPServer):
     """At most a handful of connections at once, so a flood of them cannot exhaust this computer."""
     daemon_threads = True
     _slots = threading.BoundedSemaphore(12)
+
+    def handle_error(self, request, client_address):
+        # The page hangs up on its own quick status checks while a router job runs; that is normal
+        # and not worth a traceback in the window (Studio-Link.cmd stays quiet about it too).
+        if isinstance(sys.exc_info()[1], (ConnectionError, socket.timeout)):
+            return
+        say("!", "Studio Link could not handle a request (%s)." % (sys.exc_info()[1],))
 
     def process_request(self, request, client_address):
         if not self._slots.acquire(blocking=False):
@@ -667,6 +871,8 @@ def log_in():
     ip = find_router()
     if not ip:
         say("!", "Could not find your router. Start Studio Link with --router 192.168.x.x")
+        if local_network_hint():
+            say("!", local_network_hint())
         return None
     say("ok", "Router found at %s" % ip)
     if Config.key:
@@ -681,6 +887,7 @@ def log_in():
                 upgrade_key(ip)
             return ip
         Config.key, Config.key_pass = None, None
+        Config.stale_key = True                          # offered again after the password works
         say("!", "The remembered login no longer works (was the router reset?). Please type the password.")
     if not sys.stdin.isatty():
         return ip
@@ -717,6 +924,17 @@ def log_in():
 # Putting the screen saver on the router, and remembering this computer
 # ---------------------------------------------------------------------------------------
 
+def packable(info):
+    """tarfile filter: leave out __pycache__ and what Finder / Explorer leave in folders
+    (.DS_Store, ._ resource forks, Thumbs.db); owned by root, like the published bundle."""
+    base = os.path.basename(info.name)
+    if "__pycache__" in info.name.split("/") or base in (".DS_Store", "Thumbs.db", "desktop.ini") or base.startswith("._"):
+        return None
+    info.uid = info.gid = 0
+    info.uname = info.gname = ""
+    return info
+
+
 def get_payload():
     """-> (path of a .tar.gz with the router's files, version id), or (None, None)."""
     fd, tmp = tempfile.mkstemp(suffix=".tar.gz")
@@ -733,7 +951,7 @@ def get_payload():
     import tarfile
     with os.fdopen(fd, "wb") as f, tarfile.open(fileobj=f, mode="w:gz") as t:
         for d in ("router", "setup", "animations"):
-            t.add(os.path.join(root, d), arcname=d, filter=lambda i: None if "__pycache__" in i.name else i)
+            t.add(os.path.join(root, d), arcname=d, filter=packable)
     return tmp, "dev"
 
 
@@ -805,8 +1023,12 @@ def confirm_installed(ip):
 
 
 def offer_remember(ip):
-    """After a password login: offer to keep a key so the password is never asked again."""
-    if Config.dry_run or Config.key or Config.password is None or os.path.exists(KEY_FILE):
+    """After a password login: offer to keep a key so the password is never asked again.
+    A remembered key that stopped working is replaced, not left in the way for ever."""
+    global KEY_COMMENT
+    if Config.dry_run or Config.key or Config.password is None:
+        return
+    if os.path.exists(KEY_FILE) and not Config.stale_key:
         return
     if vault_kind() is None:
         say("!", "This computer has no keychain (macOS Keychain, or 'secret-tool' on Linux), so it cannot remember "
@@ -819,6 +1041,15 @@ def offer_remember(ip):
           "  Undo any time:  python3 studio-link.py --forget", flush=True)
     if not yes_no("Remember it?"):
         return
+    if Config.stale_key:
+        vault_clear()                                    # the old key's passphrase, under its own label
+        for p in (KEY_FILE, KEY_FILE + ".pub"):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        KEY_COMMENT = fresh_key_comment()
+        Config.stale_key = False
     try:
         os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
         phrase = secrets.token_hex(24)
@@ -870,6 +1101,20 @@ def forget(ip):
     say("ok", "Forgotten. Studio Link will ask for your password again.")
 
 
+def use_local_studio(choice, platform=None):
+    """Open the Motion Studio served here (True) or the website (False)?"""
+    if choice in ("local", "web"):
+        return choice == "local"
+    if os.environ.get("STUDIO_LINK_URL"):
+        return False                                   # someone chose a Motion Studio address on purpose
+    return (platform or sys.platform) == "darwin"
+
+
+def studio_url():
+    """The Motion Studio address to open (without the #link= pairing part)."""
+    return studio_address(Config.port) if Config.local_studio else STUDIO_URL
+
+
 def main():
     ap = argparse.ArgumentParser(description="Studio Link: lets Motion Studio send animations to your router.")
     ap.add_argument("--port", type=int, default=8791)
@@ -878,11 +1123,17 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="check files but send nothing (for testing)")
     ap.add_argument("--no-browser", action="store_true", help="do not open Motion Studio automatically")
     ap.add_argument("--forget", action="store_true", help="remove the remembered login from the router and this computer")
+    ap.add_argument("--studio", choices=("auto", "local", "web"), default="auto",
+                    help="which Motion Studio to open: the copy served by Studio Link on this computer (local), "
+                         "or the website (web). auto = local on a Mac, where Safari cannot reach Studio Link "
+                         "from the website; web elsewhere")
     a = ap.parse_args()
     if a.router and not valid_host(a.router):
         sys.exit("--router must be an address like 192.168.8.1 (letters, digits, dots and dashes only).")
     Config.router, Config.key, Config.dry_run = a.router, a.key, a.dry_run
     Config.token = secrets.token_urlsafe(24)
+    Config.port = a.port
+    Config.local_studio = use_local_studio(a.studio)
 
     print("\n  GL.iNet Router Screen Saver (BE3600) - Studio Link\n", flush=True)
 
@@ -897,7 +1148,7 @@ def main():
 
     if a.dry_run:
         say("!", "DRY RUN: files are checked but nothing is sent.")
-        say("!", "To pair a page by hand, open: %s#link=%s" % (STUDIO_URL, Config.token))
+        say("!", "To pair a page by hand, open: %s#link=%s" % (studio_url(), Config.token))
     else:
         ip = log_in()
         if ip and quiet_login():
@@ -907,15 +1158,19 @@ def main():
           "  Motion Studio connects to it by itself.\n"
           "  Listening on this computer only: 127.0.0.1:%d\n"
           "  Press Ctrl+C to stop.\n" % a.port, flush=True)
+    if Config.local_studio:
+        print("  Motion Studio is served from this computer: %s\n"
+              "  (Safari cannot connect the website to Studio Link, so use this address.)\n" % studio_url(), flush=True)
 
     if TESTING:
-        say("!", "TEST pairing link: %s#link=%s" % (STUDIO_URL, Config.token))
+        say("!", "TEST pairing link: %s#link=%s" % (studio_url(), Config.token))
 
     def open_studio():
         if not Config.paired:                              # no page has paired yet: open one, with the token
             import webbrowser
-            say("ok", "Opening Motion Studio in your browser")
-            webbrowser.open(STUDIO_URL + "#link=" + Config.token)
+            say("ok", "Opening Motion Studio in your browser" + (" (served by Studio Link: %s)" % studio_url()
+                                                                  if Config.local_studio else ""))
+            webbrowser.open(studio_url() + "#link=" + Config.token)
     if not (a.no_browser or a.dry_run or os.environ.get("BE3600_NO_BROWSER")):
         t = threading.Timer(6.0, open_studio)
         t.daemon = True

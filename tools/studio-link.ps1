@@ -437,6 +437,68 @@ function Invoke-SendChime {
 }
 
 
+# The screen pages the router can show, and which are on (Motion Studio's widget list).
+function ConvertFrom-PagesList {
+    param([string]$Text)
+    $order = $null
+    $pages = New-Object System.Collections.ArrayList
+    foreach ($line in ($Text -split "`r?`n")) {
+        $p = $line.Split("`t")
+        if ($p[0] -eq 'order' -and $p.Count -ge 2) { $order = @($p[1] -split ' ' | Where-Object { $_ }) }
+        elseif (($p[0] -eq '*' -or $p[0] -eq '-') -and $p.Count -ge 3 -and $p[1] -match '^[A-Za-z0-9._-]{1,40}$') {
+            [void]$pages.Add(@{ name = $p[1]; on = ($p[0] -eq '*'); about = $p[2] })
+        }
+    }
+    if ($null -eq $order -or $pages.Count -eq 0) { return $null }
+    return @{ Order = $order; Pages = $pages }
+}
+
+function Get-Pages {
+    if ($DryRun) { return New-Reply 200 'OK' @{ ok = $true; dryRun = $true; order = @('animations'); pages = @(@{ name = 'animations'; on = $true; about = 'your saved animations' }) } }
+    if (-not (Test-QuietLogin)) {
+        return New-Reply 200 'OK' @{ ok = $false; needPassword = $true; message = 'Studio Link was started without your router password, so it cannot look at the pages.' }
+    }
+    $ip = Get-TargetRouter
+    if (-not $ip) { return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'Could not find your router.' } }
+
+    $r = Invoke-Ssh -Ip $ip -Remote 'be3600-anim pages --plain'
+    if ($r.Code -eq 255 -or $r.Out -match 'Permission denied') {
+        return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'Could not log in to the router.' }
+    }
+    $list = ConvertFrom-PagesList $r.Out
+    if ($null -eq $list) {
+        return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'The screen saver on the router is too old to choose pages from here. Close Studio Link and start it again; it will offer to update it.' }
+    }
+    return New-Reply 200 'OK' @{ ok = $true; order = $list.Order; pages = $list.Pages }
+}
+
+# be3600-anim pages set "animations clock ..."
+function Set-Pages {
+    param([string]$Text)
+    $names = ($Text -split '\s+' | Where-Object { $_ }) -join ' '
+    if ($names -notmatch '^[A-Za-z0-9:._-]{1,40}( [A-Za-z0-9:._-]{1,40}){0,40}$') {
+        return New-Reply 400 'Bad Request' @{ ok = $false; message = 'Choose at least one page.' }
+    }
+    if ($DryRun) { return New-Reply 200 'OK' @{ ok = $true; dryRun = $true; message = 'Dry run: nothing was changed.' } }
+
+    $ip = Get-TargetRouter
+    if (-not $ip) { return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'Could not find your router.' } }
+
+    Write-Step 'pages' $names
+    # $names has already been checked to be page names and single spaces, so it cannot escape the quotes.
+    $r = Invoke-Ssh -Ip $ip -Remote "be3600-anim pages set '$names'"
+    if ($r.Code -eq 255 -or $r.Out -match 'Permission denied') {
+        return New-Reply 502 'Bad Gateway' @{ ok = $false; message = 'Could not log in to the router.' }
+    }
+    if ($r.Code -ne 0) {
+        $line = Get-LastLine $r.Out
+        if (-not $line) { $line = 'The router refused.' }
+        return New-Reply 422 'Unprocessable Entity' @{ ok = $false; message = $line }
+    }
+    return New-Reply 200 'OK' @{ ok = $true; message = "Saved. The router's screen now shows: $names" }
+}
+
+
 # ----------------------------------------------------------------------------
 # Sending one animation (the same steps as Set-Animation, quietly)
 # ----------------------------------------------------------------------------
@@ -562,7 +624,7 @@ function Handle-Client {
             $Script:Paired = $true
             $known = $Router
             if (-not $known) { $known = $Script:RouterIp }
-            Send-Response $stream 200 'OK' $cors @{ ok = $true; app = 'be3600-studio-link'; version = 3; authed = $true; dryRun = [bool]$DryRun; sent = $Script:Sent; router = $known; loggedIn = (Test-QuietLogin) }
+            Send-Response $stream 200 'OK' $cors @{ ok = $true; app = 'be3600-studio-link'; version = 3; authed = $true; dryRun = [bool]$DryRun; sent = $Script:Sent; router = $known; loggedIn = (Test-QuietLogin); pages = $true }
             return
         }
 
@@ -574,6 +636,27 @@ function Handle-Client {
 
         if ($req.Method -eq 'GET' -and $req.Path -eq '/library') {
             $r = Get-Library
+            Send-Response $stream $r.Status $r.Reason $cors $r.Data
+            return
+        }
+
+        if ($req.Method -eq 'GET' -and $req.Path -eq '/pages') {
+            $r = Get-Pages
+            Send-Response $stream $r.Status $r.Reason $cors $r.Data
+            return
+        }
+
+        if ($req.Method -eq 'POST' -and $req.Path -eq '/pages') {
+            if ($req.Length -le 0 -or $req.Length -gt 2048) {
+                Send-Response $stream 400 'Bad Request' $cors @{ ok = $false; message = 'Choose at least one page.' }
+                return
+            }
+            if ($req.Headers['expect'] -eq '100-continue') {
+                $c = $Script:Latin1.GetBytes("HTTP/1.1 100 Continue`r`n`r`n")
+                $stream.Write($c, 0, $c.Length)
+            }
+            $body = Read-HttpBody $stream $req
+            $r = Set-Pages ([Text.Encoding]::UTF8.GetString($body))
             Send-Response $stream $r.Status $r.Reason $cors $r.Data
             return
         }
