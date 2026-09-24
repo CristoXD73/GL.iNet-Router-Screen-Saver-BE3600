@@ -21,78 +21,94 @@ Robot eyes, colour fields, your own text, or anything you design.
 After a few idle seconds, this plays an animation on your BE3600's front
 screen. Swipe along it and the picture follows your finger and slides to your next (or
 previous) saved animation; a tap does the same; double-tap, or swipe across the strip, to
-bring the normal GL.iNet screen back. One download sets it all up, and one command
-removes it — nothing about the router's firmware changes.
+bring the normal GL.iNet screen back. One download sets it all up, and one download
+removes it again — nothing about the router's firmware changes.
 
-## Get started (two steps)
+## Install or uninstall
 
-Needs: a GL-BE3600 (Slate 7), a computer on the same network as it, and its
-admin password.
-
-<div align="center">
-
-### 1. [Download Studio Link](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/get.html)
-
-</div>
-
-**2. Double-click it** (Windows). **Mac:** open Terminal, type `python3 ` (with the space), drag
-the downloaded `studio-link.py` into the window and press Return. Linux: `python3 studio-link.py`.
-That one file:
-
-* finds your router,
-* asks for its admin password once,
-* installs the screen saver if the router does not have it,
-* offers to remember this computer, encrypted with a passphrase you choose,
-* **opens Motion Studio, already connected** — that is where you design. On a Mac it opens the
-  copy Studio Link serves itself, at `http://127.0.0.1:8791/`, because Safari never lets the website
-  talk to a helper on your own computer (it works in Chrome, Edge and Firefox too).
-
-The install ends with the eyes waking up on the router's screen while the fan
-revs under them, so you know it took. Then **Compile** in Motion Studio sends
-your animation over, and the three slots on the page show what is on the router.
-It appears after a few idle seconds and survives reboots.
-
-### Step by step
+You need: a GL-BE3600 (Slate 7) — the "modem" with the little screen — a computer on its Wi-Fi
+(or plugged into it), and the router's admin password, the one for its admin web page.
 
 <div align="center">
 
-<img src="docs/assets/step1-download.svg" alt="Step 1: get Studio Link from the download page, then double-click the downloaded file" width="820">
-
-<img src="docs/assets/step2-install.svg" alt="Step 2: type the router password once, press Enter to install the screen saver, press Enter to remember this computer" width="820">
-
-<img src="docs/assets/step3-make.svg" alt="Step 3: pick Atmosphere, Robot Eyes or GIF in Motion Studio and press Compile BE3600 Pack" width="820">
-
-<img src="docs/assets/step4-send.svg" alt="Step 4: the animation is sent to the router, and the three slots show Play and Remove" width="820">
+### [**⬇ Install**](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/get.html) &nbsp;&nbsp;·&nbsp;&nbsp; [**Uninstall**](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/get.html#uninstall)
 
 </div>
 
+The page sees which computer you are on and gives you the one right file:
+
+* **Windows:** open the file you downloaded. If Windows says it protected your PC, click
+  *More info*, then *Run anyway*.
+* **Mac:** double-click the file in your Downloads folder (if you see a .zip, double-click that
+  first). If your Mac says it can't check the file: *System Settings → Privacy & Security*,
+  scroll down, *Open Anyway*.
+* **Linux:** in a terminal, `python3 ~/Downloads/install-screen-saver.py`.
+
+Then it talks you through three steps, the same on every computer:
+
+```
+  Step 1 of 3: Finding your router
+     Found your router at 192.168.8.1.
+
+  Step 2 of 3: Logging in to your router
+     Type your router's admin password (the one for its admin web page) and press Enter.
+     Nothing will show while you type - that's normal.
+     Password:
+     Logged in.
+
+     Save this login so you don't have to type the password next time? [Y/n]
+     Saved. Next time you won't need to type the password.
+
+  Step 3 of 3: Installing the screen saver
+     This takes about a minute. Please keep this window open.
+     Installed.
+
+  All done! Your router's screen will show the animation after a few idle seconds.
+```
+
+The install ends with two eyes waking up on the router's screen while its fan revs, so you know
+it took. **Uninstall** finds and logs in to the router the same way (no password if you saved the
+login), puts GL.iNet's normal screen back, removes every file, service and setting it added, and
+forgets this computer's saved login and router address, on both sides:
+*"Your router is back to normal. You can delete this file."*
+
+It tries the address that worked last time, then this computer's router, then GL.iNet's usual
+`192.168.8.1`; if yours is somewhere else (say `192.168.20.1`) it asks you to type it. Every
+message, on every system, is in [`tests/setup_flow/`](tests/setup_flow) — the tests hold Windows,
+macOS and Linux to exactly those words.
+
 <details>
-<summary><b>Prefer not to use the website? Install from the ZIP</b></summary>
+<summary><b>Advanced: Studio Link, the ZIP, and doing it by hand</b></summary>
 
-**Windows:** Click **Code → Download ZIP** above, unzip it, double-click
-**`Install.cmd`**, and type your router's admin password when it asks.
+**Studio Link** installs the screen saver as well, then opens Motion Studio already connected to
+your router, so what you design goes straight onto it. Get it under *Advanced* on the
+[download page](https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/get.html)
+(Windows: `Studio-Link.cmd`; Mac / Linux: `python3 studio-link.py`). On a Mac it opens the copy of
+Motion Studio it serves itself, at `http://127.0.0.1:8791/`, because Safari never lets the website
+talk to a helper on your own computer.
 
-**macOS:** double-click **`Install.command`** (the first time, macOS may say it is from an
-unidentified developer: right-click it → *Open* → *Open*). Or in Terminal: `./install.sh`.
-**Linux:** `./install.sh`
+**From the ZIP or a clone** (*Code → Download ZIP*, then unzip):
 
-<img src="docs/assets/steps.svg" alt="1. Download and unzip. 2. Double-click Install. 3. Enter your router password." width="720">
-</details>
+* Windows: double-click **`Install.cmd`**; drag a `.bea` onto **`Set-Animation.cmd`**.
+* macOS: double-click **`Install.command`** (the first time, macOS may ask you to allow it under
+  *System Settings → Privacy & Security*). Or in Terminal: `./install.sh`.
+* Linux: `./install.sh`, `./set-animation.sh`, `./studio-link.sh`.
 
-<details>
-<summary><b>Something went wrong, or you want to know what it does</b></summary>
+The one-click files are these same programs: `python3 tools/studio_link.py --install` /
+`--uninstall`, and on Windows `tools\studio-link.ps1 -Install` / `-Uninstall`.
 
-* **Windows says the script is blocked.** Right-click the ZIP → *Properties* →
-  tick *Unblock* → OK, then unzip again. Or click *More info, Run anyway*.
-* **It can't find the router.** It tries the last address that worked, then
-  your gateway, then `192.168.8.1`. Wrong router? It'll ask once and remember
-  the answer, or give it directly: `Install.cmd -Router 192.168.x.x`.
-* **The password** is your router's normal admin password, typed into `ssh`'s
-  own prompt — these scripts never see or store it.
-* **What it changes:** a few small files on the router, plus a background
-  service. See [below](#turn-it-off-or-remove-it) to undo that.
+**On the router itself** (over SSH, `ssh root@192.168.8.1`): `be3600-uninstall --purge` removes
+everything; `be3600-anim off` just switches it off. See [below](#turn-it-off-or-remove-it).
 
-More help: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
+**Something went wrong?** [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
+
+<div align="center">
+
+<img src="docs/assets/step3-make.svg" alt="Pick Atmosphere, Robot Eyes or GIF in Motion Studio and press Compile BE3600 Pack" width="820">
+
+<img src="docs/assets/step4-send.svg" alt="The animation is sent to the router, and the three slots show Play and Remove" width="820">
+
+</div>
 </details>
 
 ## Design one, and get it onto the router
@@ -112,7 +128,7 @@ chime for the fan. Pick **Atmosphere** (six slow colour scenes), **Robot Eyes** 
 video**) and click **Compile BE3600 Pack**. It asks how long the loop should
 be (1-25 s).
 
-With **Studio Link** running (step 2 above), Motion Studio connects to your router
+With **Studio Link** running (see *Advanced* above), Motion Studio connects to your router
 by itself:
 
 * **Compile** sends the animation to the router straight away, named after what
@@ -196,13 +212,15 @@ pillow`). Format details: [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md).
 
 ## Turn it off, or remove it
 
-On the router, in a terminal (see [how to open one](docs/TROUBLESHOOTING.md#how-to-open-a-terminal-on-the-router)):
+The easy way to remove it is the **Uninstall** button at the [top](#install-or-uninstall). Or on
+the router, in a terminal (see [how to open one](docs/TROUBLESHOOTING.md#how-to-open-a-terminal-on-the-router)):
 
 ```sh
 be3600-anim off            # switch it off; everything stays installed
 be3600-anim on             # switch it back on
 be3600-uninstall           # remove it completely (keeps your animations)
 be3600-uninstall --purge   # remove everything
+be3600-uninstall --purge --forget-keys   # and the logins computers saved (what Uninstall runs)
 ```
 
 Either way, the normal GL.iNet screen comes back exactly as it was.

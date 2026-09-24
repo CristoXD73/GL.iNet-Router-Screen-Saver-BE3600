@@ -13,6 +13,8 @@
 #   -DryRun  check files but send nothing (for testing)
 #   -NoBrowser  do not open Motion Studio automatically
 #   -Forget  remove the remembered login from the router and this computer
+#   -Install    put the screen saver on your router, step by step (what Install-Screen-Saver.cmd runs)
+#   -Uninstall  take it off your router and this computer, step by step (Uninstall-Screen-Saver.cmd)
 #
 # The first time, it also puts the screen saver on your router if it is not there yet
 # (press Enter to agree), and offers to remember this computer so you never type the
@@ -31,7 +33,9 @@ param(
     [string]$Key,
     [switch]$DryRun,
     [switch]$NoBrowser,
-    [switch]$Forget
+    [switch]$Forget,
+    [switch]$Install,
+    [switch]$Uninstall
 )
 
 . "$PSScriptRoot\lib.ps1"
@@ -974,6 +978,16 @@ function Offer-Remember {
     ) 'Yellow'
     if (-not (Read-YesNo 'Remember it?')) { return }
 
+    $problem = New-RememberedKey $Ip
+    if ($null -eq $problem) { Write-Ok 'Remembered. Next time there is nothing to type.' }
+    else { Write-Warn ("Could not set that up ($problem). Nothing is lost; you will just be asked for the password each time.") }
+}
+
+# Makes this computer's key (locked with a passphrase that only this Windows account can open),
+# adds it to the router and switches to it. -> $null when it works, else the reason in a few words
+# (and nothing is left behind: key files, passphrase and the password are as they were).
+function New-RememberedKey {
+    param([string]$Ip)
     try {
         $keygen = Get-Exe 'ssh-keygen.exe'
         if (-not $keygen) { throw 'ssh-keygen.exe was not found' }
@@ -999,18 +1013,15 @@ function Offer-Remember {
         $Script:Password = $null
         $script:Key = $Script:KeyPath
         $script:KeyPass = $phrase
-        if (Test-Login $Ip) {
-            Write-Ok 'Remembered. Next time there is nothing to type.'
-            return
-        }
+        if (Test-Login $Ip) { return $null }
         $script:Key = $null
         $script:KeyPass = $null
         $Script:Password = $pw
         throw 'the router did not accept the key'
     }
     catch {
-        Write-Warn ("Could not set that up ($($_.Exception.Message)). Nothing is lost; you will just be asked for the password each time.")
         Remove-KeyFiles
+        return $_.Exception.Message
     }
 }
 
@@ -1028,8 +1039,333 @@ function Invoke-Forget {
 
 
 # ----------------------------------------------------------------------------
+# Install and Uninstall: the guided flow behind the one-click downloads
+#
+# The same steps, sentences and choices as tools/studio_link.py (--install / --uninstall);
+# tests/setup_flow/ holds the exact conversations both must produce.
+# ----------------------------------------------------------------------------
+
+$Script:AddressPrompt = "Press Enter to try again, or type your router's address (like 192.168.8.1), or Q to quit: "
+# No double quotes: this travels inside one quoted cmd.exe argument.
+$Script:Be3600Check = 'S=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null); [ -x /etc/init.d/gl_screen ] && [ x$S = x76,284 ] && echo be3600-yes; command -v be3600-uninstall >/dev/null 2>&1 && echo be3600-installed; true'
+$Script:Answers = $null
+
+# Test hook: answers come from a file (one per line) instead of the keyboard.
+function Get-ScriptedAnswers {
+    if (-not ($Script:Testing -and $env:BE3600_ANSWERS)) { return $null }
+    if ($null -eq $Script:Answers) {
+        $Script:Answers = New-Object System.Collections.ArrayList
+        foreach ($l in [IO.File]::ReadAllLines($env:BE3600_ANSWERS)) { [void]$Script:Answers.Add($l) }
+    }
+    return ,$Script:Answers
+}
+
+function Test-Interactive { return (-not $Script:Testing) -and (-not [Console]::IsInputRedirected) }
+
+function Flow-Say { param([string]$Text) if ($Text) { Write-Host ('     ' + $Text) } else { Write-Host '' } }
+function Flow-Title { param([string]$Text) Write-Host ''; Write-Host ('  ' + $Text) -ForegroundColor White }
+function Flow-Step { param([int]$N, [int]$Total, [string]$Text) Write-Host ''; Write-Host ("  Step $N of ${Total}: $Text") -ForegroundColor Cyan }
+function Flow-End {
+    param([string]$Text, [bool]$Good)
+    Write-Host ''
+    $c = 'Red'; if ($Good) { $c = 'Green' }
+    Write-Host ('  ' + $Text) -ForegroundColor $c
+}
+
+# Shows the prompt and reads one line. Throws BE3600-QUIT when the input ends.
+function Flow-Ask {
+    param([string]$Prompt, [switch]$Secret)
+    Write-Host ('     ' + $Prompt) -NoNewline
+    $scripted = Get-ScriptedAnswers
+    if ($null -ne $scripted) {
+        if ($scripted.Count -eq 0) { Write-Host ''; throw 'BE3600-QUIT' }
+        $a = [string]$scripted[0]
+        $scripted.RemoveAt(0)
+        if ($Secret) { Write-Host '' } else { Write-Host $a }
+        return $a
+    }
+    try {
+        if ($Secret) {
+            $sec = Read-Host -AsSecureString
+            if ($null -eq $sec) { throw 'eof' }
+            $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+            try { return [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }
+            finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+        }
+        $a = Read-Host
+        if ($null -eq $a) { throw 'eof' }
+        return $a
+    } catch {
+        Write-Host ''
+        throw 'BE3600-QUIT'
+    }
+}
+
+function Flow-Fail { param([string]$Text) throw ('BE3600-FAIL:' + $Text) }
+
+# Double-clicked windows close by themselves; leave the result on screen.
+function Flow-Close {
+    if (-not (Test-Interactive)) { return }
+    Write-Host ''
+    Write-Host '  Press Enter to close this window.' -NoNewline
+    try { [void](Read-Host) } catch {}
+}
+
+# Where to look, in order: the address that worked last time, this computer's gateway,
+# and GL.iNet's factory address. Only a few well-known places are probed, never a scan.
+function Get-FlowCandidates {
+    $c = @()
+    if ($Router) { $c += $Router }                                  # -Router first
+    $saved = Get-SavedRouter
+    if ($saved) { $c += $saved }
+    if ($Script:Testing -and $env:BE3600_GATEWAY) {                 # test hook ("none": no gateway)
+        if ($env:BE3600_GATEWAY -ne 'none') { $c += $env:BE3600_GATEWAY }
+    } else {
+        $c += @(Get-GatewayCandidates)
+    }
+    $c += '192.168.8.1'
+    return @($c | Where-Object { $_ -and (Test-HostName $_) } | Select-Object -Unique)
+}
+
+function Test-RouterAnswers {
+    param([string]$Ip)
+    if ($Script:Testing -and $env:BE3600_REACHABLE) { return (@($env:BE3600_REACHABLE -split ',') -contains $Ip) }   # test hook ("none": nothing answers)
+    return (Test-SshPort $Ip)
+}
+
+# Step 1. $Skip: addresses found not to be a GL-BE3600. -> the router's address.
+function Flow-Find {
+    param([string[]]$Skip)
+    $look = $true
+    while ($true) {
+        if ($look) {
+            foreach ($ip in (Get-FlowCandidates)) {
+                if (($Skip -notcontains $ip) -and (Test-RouterAnswers $ip)) { Flow-Say "Found your router at $ip."; return $ip }
+            }
+            Flow-Say "We can't find your router. Make sure this computer is on the router's Wi-Fi (or plugged into it), then press Enter to try again."
+        }
+        $look = $false
+        $answer = (Flow-Ask $Script:AddressPrompt).Trim()
+        if ($answer -match '^(q|quit)$') { throw 'BE3600-QUIT' }
+        if (-not $answer) { Flow-Say 'Trying again...'; $look = $true; continue }
+        if (-not (Test-HostName $answer)) { Flow-Say "That doesn't look like a router address. It should look like 192.168.8.1."; continue }
+        if (Test-UnusualAddress $answer) {
+            Flow-Say "$answer isn't an address on a home or office network, and your password would be sent there."
+            if ((Flow-Ask 'Use it anyway? [y/N] ').Trim() -notmatch '^(y|yes)$') { continue }
+        }
+        if ($Skip -contains $answer) { Flow-Say "$answer isn't a GL-BE3600 (Slate 7). Type the address of your GL-BE3600."; continue }
+        if (Test-RouterAnswers $answer) { Flow-Say "Found your router at $answer."; return $answer }
+        Flow-Say "Nothing answered at $answer. Check the address, and that this computer is on the router's Wi-Fi."
+    }
+}
+
+# -> 'ok', 'denied' (wrong password or key) or 'unreachable'
+function Test-FlowLogin {
+    param([string]$Ip)
+    $r = Invoke-Ssh -Ip $Ip -Remote 'echo studio-ok'
+    if ($r.Code -eq 0 -and $r.Out -match 'studio-ok') { return 'ok' }
+    if ($r.Out -match 'Permission denied' -or $r.Code -ne 255) { return 'denied' }
+    return 'unreachable'
+}
+
+# Step 2: the saved login, or the password (3 tries). -> 'ok', 'failed' or 'unreachable'.
+# $Script:Password is set afterwards only if the password was what got in.
+function Flow-Login {
+    param([string]$Ip)
+    $Script:Password = $null
+    $script:Key = $null
+    $script:KeyPass = $null
+    if (Test-Path -LiteralPath $Script:KeyPath) {
+        $script:Key = $Script:KeyPath
+        $script:KeyPass = Get-SavedKeyPass
+        $r = Test-FlowLogin $Ip
+        if ($r -eq 'ok') { Flow-Say 'Using the login saved on this computer.'; return 'ok' }
+        $script:Key = $null
+        $script:KeyPass = $null
+        if ($r -eq 'unreachable') { return 'unreachable' }
+        Flow-Say "The saved login doesn't work any more (maybe the router was reset). Please type the password instead."
+    }
+    if (-not $Script:AskPassPath) { New-AskPass }
+    Flow-Say "Type your router's admin password (the one for its admin web page) and press Enter."
+    Flow-Say "Nothing will show while you type - that's normal."
+    $tries = 3
+    while ($tries -gt 0) {
+        $pw = Flow-Ask 'Password: ' -Secret
+        if (-not $pw) { Flow-Say 'Nothing was typed. Type the password, then press Enter.'; continue }
+        $Script:Password = $pw
+        $r = Test-FlowLogin $Ip
+        if ($r -eq 'ok') { Flow-Say 'Logged in.'; return 'ok' }
+        $Script:Password = $null
+        if ($r -eq 'unreachable') { return 'unreachable' }
+        $tries--
+        if ($tries -eq 2) { Flow-Say "That password didn't work. Please try again (2 tries left)." }
+        elseif ($tries -eq 1) { Flow-Say "That password didn't work. Please try again (1 try left)." }
+    }
+    return 'failed'
+}
+
+# After a password login: keep a key (never the password) so it is not asked again.
+function Flow-SaveLogin {
+    param([string]$Ip)
+    Write-Host ''
+    $a = (Flow-Ask "Save this login so you don't have to type the password next time? [Y/n] ").Trim()
+    if ($a -match '^(n|no)$') { Flow-Say "OK. You'll type the password next time."; return }
+    $problem = New-RememberedKey $Ip
+    if ($null -eq $problem) { Flow-Say "Saved. Next time you won't need to type the password." }
+    else { Flow-Say "The login couldn't be saved this time ($problem). That's fine - you'll type the password next time." }
+}
+
+# -> @{ Be3600; Installed }, or $null if the router stopped answering.
+function Get-RouterFacts {
+    param([string]$Ip)
+    $r = Invoke-Ssh -Ip $Ip -Remote $Script:Be3600Check
+    if ($r.Code -ne 0) { return $null }
+    return @{ Be3600 = ($r.Out -match 'be3600-yes'); Installed = ($r.Out -match 'be3600-installed') }
+}
+
+function Say-NotBe3600 {
+    param([string]$Ip)
+    Flow-Say "The device at $Ip isn't a GL-BE3600 (Slate 7) - it may be your internet provider's modem. Nothing was changed on it."
+}
+
+# Steps 1 and 2, until the address is a GL-BE3600 we are logged in to; then, after a password
+# login, the offer to save it (only ever to a GL-BE3600). -> @{ Ip; Installed }
+function Flow-Connect {
+    param([bool]$OfferSave, [int]$Total)
+    $skip = @()
+    while ($true) {
+        Flow-Step 1 $Total 'Finding your router'
+        $ip = Flow-Find $skip
+        Flow-Step 2 $Total 'Logging in to your router'
+        $result = Flow-Login $ip
+        if ($result -eq 'failed') {
+            Flow-Fail "That password didn't work 3 times. Check it's the password for the router's admin web page, then run this again."
+        }
+        $facts = $null
+        if ($result -eq 'ok') { $facts = Get-RouterFacts $ip }
+        if ($null -eq $facts) {
+            Flow-Fail "Your router stopped answering. Check this computer is still on its Wi-Fi, then run this again."
+        }
+        if (-not $facts.Be3600) {
+            Say-NotBe3600 $ip
+            $skip += $ip
+            $Script:Password = $null
+            $script:Key = $null
+            $script:KeyPass = $null
+            continue
+        }
+        if ($OfferSave -and ($null -ne $Script:Password)) { Flow-SaveLogin $ip }
+        return @{ Ip = $ip; Installed = $facts.Installed }
+    }
+}
+
+# Runs the body, turning BE3600-QUIT / BE3600-FAIL into the closing sentence. -> exit code
+function Invoke-Flow {
+    param([scriptblock]$Body, [scriptblock]$OnQuit)
+    $code = 1
+    try {
+        & $Body | Out-Null
+        $code = 0
+    } catch {
+        $m = [string]$_.Exception.Message
+        if ($m -eq 'BE3600-QUIT') { & $OnQuit }
+        elseif ($m.StartsWith('BE3600-FAIL:')) { Flow-End $m.Substring(12) $false }
+        else { Flow-End ("Something went wrong: $m. Run this again.") $false }
+    } finally {
+        $Script:Password = $null
+        Clear-PasswordEnv
+    }
+    Flow-Close
+    return $code
+}
+
+function Invoke-InstallFlow {
+    Flow-Title 'GL.iNet Router Screen Saver - Install'
+    Flow-Say 'This puts the animated screen saver on your GL.iNet GL-BE3600 (Slate 7).'
+    return (Invoke-Flow -Body {
+        $c = Flow-Connect $true 3
+        $ip = $c.Ip
+        Flow-Step 3 3 'Installing the screen saver'
+        Flow-Say 'This takes about a minute. Please keep this window open.'
+        $payload = Get-Payload
+        if (-not $payload) { Flow-Fail "This file is missing the screen saver's files. Download it again, then run it." }
+        try {
+            $remote = 'D=$(mktemp -d /tmp/be3600-setup.XXXXXX) && cd $D && gunzip -c | tar xf - && BE3600_VERSION={0} sh setup/router-install.sh; R=$?; cd /; rm -rf $D; exit $R' -f $payload.Id
+            $r = Invoke-Ssh -Ip $ip -Remote $remote -InputFile $payload.Path
+        } finally {
+            try { [System.IO.File]::Delete($payload.Path) } catch {}
+        }
+        if ($r.Code -eq 3) {
+            Flow-Fail "The device at $ip isn't a GL-BE3600 (Slate 7), so nothing was installed. Run this again and type your GL-BE3600's address."
+        }
+        if ($r.Code -ne 0) {
+            $why = ((Get-LastLine $r.Out) -replace 'ERROR:', '').Trim().TrimEnd('.')
+            if (-not $why) { $why = 'no reason given' }
+            Flow-Fail "The install didn't finish on the router: $why. Run this again; if it keeps failing, restart the router and try once more."
+        }
+        Flow-Say 'Installed.'
+        Save-Router $ip
+        Flow-End "All done! Your router's screen will show the animation after a few idle seconds." $true
+    } -OnQuit {
+        Flow-End "Nothing was changed. Run this again when this computer is on the router's Wi-Fi." $false
+    })
+}
+
+# The saved router address, the saved login's key files and its DPAPI-locked passphrase.
+function Remove-ThisComputer {
+    Remove-KeyFiles
+    try { [System.IO.File]::Delete($Script:StateFile) } catch {}
+    try {
+        if ((Test-Path -LiteralPath $Script:StateDir) -and -not @(Get-ChildItem -LiteralPath $Script:StateDir -Force).Count) {
+            [System.IO.Directory]::Delete($Script:StateDir)
+        }
+    } catch {}
+}
+
+function Invoke-UninstallFlow {
+    Flow-Title 'GL.iNet Router Screen Saver - Uninstall'
+    Flow-Say "This removes the screen saver and puts your router's normal screen back."
+    $Script:FlowIp = $null
+    return (Invoke-Flow -Body {
+        $c = Flow-Connect $false 3
+        $ip = $c.Ip
+        $Script:FlowIp = $ip
+        Flow-Step 3 3 'Removing the screen saver'
+        if ($c.Installed) {
+            $r = Invoke-Ssh -Ip $ip -Remote '/usr/sbin/be3600-uninstall --purge --forget-keys'
+            if ($r.Code -ne 0) {
+                $why = ((Get-LastLine $r.Out) -replace 'ERROR:', '').Trim().TrimEnd('.')
+                if (-not $why) { $why = 'no reason given' }
+                Flow-Fail "The router couldn't remove it: $why. Run this again, or remove it on the router itself: connect with ssh root@$ip, then type be3600-uninstall --purge"
+            }
+            Flow-Say "Removed it from the router. GL.iNet's normal screen is back."
+        } else {
+            [void](Invoke-Ssh -Ip $ip -Remote "sed -i '/ be3600-studio-link-[A-Za-z0-9_-]*`$/d' $($Script:AuthKeys) 2>/dev/null; true")
+            Flow-Say "The screen saver wasn't on this router, so there was nothing to remove there."
+        }
+        Remove-ThisComputer
+        Flow-Say 'Removed the saved login and router address from this computer.'
+        Flow-End 'Your router is back to normal. You can delete this file.' $true
+    } -OnQuit {
+        $at = $Script:FlowIp
+        if (-not $at) { $at = '192.168.8.1' }
+        Flow-End "We couldn't reach your router, so nothing was changed." $false
+        Flow-Say "To remove it on the router itself: connect with ssh root@$at, log in with the router's admin password,"
+        Flow-Say 'then type: be3600-uninstall --purge'
+    })
+}
+
+# ----------------------------------------------------------------------------
 # Go
 # ----------------------------------------------------------------------------
+
+if ($Install -or $Uninstall) {
+    # The single-file download unpacks this script to a temp file (SELF is set by it); remove it now.
+    if ($env:SELF -and $MyInvocation.MyCommand.Path) { try { [System.IO.File]::Delete($MyInvocation.MyCommand.Path) } catch {} }
+    try { $Host.UI.RawUI.WindowTitle = 'GL.iNet Router Screen Saver' } catch {}
+    if ($Install) { $code = Invoke-InstallFlow } else { $code = Invoke-UninstallFlow }
+    exit ([int](@($code)[-1]))
+}
 
 Show-Banner 'GL.iNet Router Screen Saver (BE3600)' 'Studio Link'
 

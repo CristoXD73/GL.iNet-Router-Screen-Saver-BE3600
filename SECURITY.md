@@ -38,6 +38,14 @@ maintainer sees it, and a fix and credit (if you want it) once it's resolved.
   the website): only the page's own files (`index.html`, `fan.html`, `shared.*`, `vendor/*.js`) are served, from
   memory, to 127.0.0.1 only, with the same Host/Origin checks as every other request, `no-store`, `nosniff`
   and no framing. Nothing else on the computer can be requested through it.
+* **The Install and Uninstall downloads** are Studio Link itself, with what it does fixed inside it; they
+  open no port at all. The router address is checked the same way (plain addresses only, and a question
+  before a password could go to an address outside home and office networks), the password is held in
+  memory and handed to ssh only through the askpass helper's environment, never a command line, and
+  *Save this login* stores a key (never the password) whose passphrase the keychain / DPAPI keeps. A
+  login is only ever saved on a device confirmed to be a GL-BE3600. Uninstall removes those keys from
+  the router (`be3600-uninstall --forget-keys`: only lines labelled `be3600-studio-link-...`) and from
+  this computer, with the keychain entry.
 * **The downloads** (``studio/downloads/``) are published with `SHA256SUMS`, and the router
   program they carry (`router/usr/bin/be3600-player`) is built reproducibly:
   `sh native/build-reproducible.sh --check` proves it matches `native/be3600-player.c`.

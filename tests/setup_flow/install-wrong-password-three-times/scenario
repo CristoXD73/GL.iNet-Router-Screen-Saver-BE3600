@@ -1,0 +1,8 @@
+# Three wrong passwords: it stops, and says what to check.
+runs: install
+routers: 192.168.8.1=be3600
+reachable: 192.168.8.1
+gateway: 192.168.8.1
+password: hunter2
+exit.1: 1
+check: not-installed 192.168.8.1

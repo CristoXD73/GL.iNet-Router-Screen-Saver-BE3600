@@ -1,0 +1,8 @@
+# Installed once with Save this login; the second time nothing is asked at all.
+runs: install install
+routers: 192.168.8.1=be3600
+reachable: 192.168.8.1
+gateway: 192.168.8.1
+password: hunter2
+check: installed 192.168.8.1
+check: saved-login 192.168.8.1

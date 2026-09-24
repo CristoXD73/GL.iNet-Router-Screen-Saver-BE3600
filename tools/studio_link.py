@@ -119,6 +119,10 @@ PAYLOAD = None  # __PAYLOAD__
 # browser, never lets an https page talk to http://127.0.0.1 (WebKit treats it as mixed content),
 # so on a Mac the website cannot reach Studio Link; the copy served here can, in any browser.
 STUDIO = None  # __STUDIO__
+
+# The one-click downloads are this same program with what it does set here: "install" or
+# "uninstall" (tools/build_downloads.py). None: Studio Link, or whatever the command line says.
+ACTION = None  # __ACTION__
 STUDIO_FILES = ("index.html", "fan.html", "shared.js", "shared.css", "OPEN_SOURCE.md")
 STUDIO_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8", ".md": "text/plain; charset=utf-8"}
@@ -198,6 +202,8 @@ def check_bea(data):
 
 
 def ssh_open(ip, timeout=1.5):
+    if TESTING and "BE3600_REACHABLE" in os.environ:        # test hook: which addresses "answer"
+        return ip in os.environ["BE3600_REACHABLE"].split(",")
     try:
         with socket.create_connection((ip, 22), timeout=timeout):
             return True
@@ -215,6 +221,8 @@ def local_network_hint(platform=None):
 
 
 def default_gateway():
+    if TESTING and "BE3600_GATEWAY" in os.environ:          # test hook: this computer's gateway ("none": no gateway)
+        return os.environ["BE3600_GATEWAY"].replace("none", "") or None
     for cmd, pat in ((["ip", "route", "show", "default"], r"default via (\S+)"),
                      (["route", "-n", "get", "default"], r"gateway:\s*(\S+)")):
         try:
@@ -232,6 +240,16 @@ def find_router():
         return Config.router
     if Config.found and ssh_open(Config.found):
         return Config.found
+    for c in router_candidates():
+        if ssh_open(c):
+            Config.found = c
+            return c
+    return None
+
+
+def router_candidates():
+    """Where to look, in order: the address that worked last time, this computer's gateway,
+    and GL.iNet's factory address. Only a few well-known places are probed, never a scan."""
     cands = []
     try:
         with open(STATE_FILE) as f:
@@ -241,11 +259,7 @@ def find_router():
     cands += [default_gateway(), "192.168.8.1"]
     # Anything that is not a plain address or name (for example text that looks like an ssh
     # option) is dropped, whether it came from the saved file or from the network.
-    for c in dict.fromkeys(x for x in cands if valid_host(x)):
-        if ssh_open(c):
-            Config.found = c
-            return c
-    return None
+    return list(dict.fromkeys(x for x in cands if valid_host(x)))
 
 
 def remember_router(ip):
@@ -787,12 +801,17 @@ def test_login(ip):
 
 
 def is_home_address(ip):
-    """False only for a plain IP address that is not on a home/office network."""
+    """False only for a plain IPv4 address that is not on a home/office network: 10.x, 127.x,
+    192.168.x, 172.16-31.x and 169.254.x are. The same list as Test-UnusualAddress on Windows
+    (Python's is_private also counts documentation and benchmark ranges, which Windows does not)."""
     try:
         a = ipaddress.ip_address(ip)
     except ValueError:
         return True                                          # a name: cannot tell, so do not nag
-    return a.is_private or a.is_link_local or a.is_loopback
+    if a.version != 4:
+        return True
+    return any(a in ipaddress.ip_network(n) for n in
+               ("10.0.0.0/8", "127.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12", "169.254.0.0/16"))
 
 
 # ---- the remembered key's passphrase lives in the system keychain -----------------------
@@ -800,7 +819,18 @@ def is_home_address(ip):
 # operating system (macOS Keychain, or libsecret's secret-tool on Linux), so copying the key
 # file elsewhere gets an attacker nothing.
 
+def _test_vault():
+    """Test hook: a keychain in a folder, so the Save-this-login steps can be tested anywhere
+    (and never touch the real one). "none": this computer has no keychain at all."""
+    d = os.environ.get("BE3600_VAULT_DIR") if TESTING else None
+    return os.path.join(d, "%s--%s" % (VAULT_SERVICE, KEY_COMMENT)) if d and d != "none" else None
+
+
 def vault_kind():
+    if TESTING and os.environ.get("BE3600_VAULT_DIR") == "none":
+        return None
+    if _test_vault():
+        return "test"
     if sys.platform == "darwin" and shutil.which("security"):
         return "keychain"
     if shutil.which("secret-tool"):
@@ -810,7 +840,10 @@ def vault_kind():
 
 def vault_store(secret):
     k = vault_kind()
-    if k == "keychain":
+    if k == "test":
+        with open(_test_vault(), "w") as f:
+            f.write(secret)
+    elif k == "keychain":
         subprocess.run(["security", "add-generic-password", "-U", "-s", VAULT_SERVICE, "-a", KEY_COMMENT, "-w", secret],
                        check=True, capture_output=True)
     elif k == "libsecret":
@@ -822,6 +855,12 @@ def vault_store(secret):
 
 def vault_load():
     k = vault_kind()
+    if k == "test":
+        try:
+            with open(_test_vault()) as f:
+                return f.read() or None
+        except OSError:
+            return None
     try:
         if k == "keychain":
             r = subprocess.run(["security", "find-generic-password", "-s", VAULT_SERVICE, "-a", KEY_COMMENT, "-w"],
@@ -838,6 +877,12 @@ def vault_load():
 
 def vault_clear():
     k = vault_kind()
+    if k == "test":
+        try:
+            os.unlink(_test_vault())
+        except OSError:
+            pass
+        return
     try:
         if k == "keychain":
             subprocess.run(["security", "delete-generic-password", "-s", VAULT_SERVICE, "-a", KEY_COMMENT], capture_output=True)
@@ -1025,7 +1070,6 @@ def confirm_installed(ip):
 def offer_remember(ip):
     """After a password login: offer to keep a key so the password is never asked again.
     A remembered key that stopped working is replaced, not left in the way for ever."""
-    global KEY_COMMENT
     if Config.dry_run or Config.key or Config.password is None:
         return
     if os.path.exists(KEY_FILE) and not Config.stale_key:
@@ -1041,6 +1085,18 @@ def offer_remember(ip):
           "  Undo any time:  python3 studio-link.py --forget", flush=True)
     if not yes_no("Remember it?"):
         return
+    problem = create_remembered_key(ip)
+    if problem is None:
+        say("ok", "Remembered. Next time there is nothing to type.")
+    else:
+        say("!", "Could not set that up (%s). Nothing is lost; you will just be asked for the password each time." % problem)
+
+
+def create_remembered_key(ip):
+    """Make this computer's key (locked with a passphrase the keychain keeps), add it to the
+    router and switch to it. -> None when it works, else the reason in a few words (and
+    nothing is left behind: key files, keychain entry and the password are as they were)."""
+    global KEY_COMMENT
     if Config.stale_key:
         vault_clear()                                    # the old key's passphrase, under its own label
         for p in (KEY_FILE, KEY_FILE + ".pub"):
@@ -1070,18 +1126,17 @@ def offer_remember(ip):
         pw, Config.password = Config.password, None
         Config.key, Config.key_pass = KEY_FILE, phrase
         if test_login(ip):
-            say("ok", "Remembered. Next time there is nothing to type.")
-            return
+            return None
         Config.key, Config.key_pass, Config.password = None, None, pw
         raise RuntimeError("the router did not accept the key")
     except (OSError, subprocess.SubprocessError, RuntimeError) as e:
-        say("!", "Could not set that up (%s). Nothing is lost; you will just be asked for the password each time." % e)
         for p in (KEY_FILE, KEY_FILE + ".pub"):
             try:
                 os.unlink(p)
             except OSError:
                 pass
         vault_clear()
+        return str(e) or e.__class__.__name__
 
 
 def forget(ip):
@@ -1099,6 +1154,326 @@ def forget(ip):
             pass
     vault_clear()
     say("ok", "Forgotten. Studio Link will ask for your password again.")
+
+
+# ---------------------------------------------------------------------------------------
+# Install and Uninstall: the guided flow behind the one-click downloads
+#
+# The same steps, sentences and choices as tools/studio-link.ps1 (-Install / -Uninstall);
+# tests/setup_flow/ holds the exact conversations both must produce.
+# ---------------------------------------------------------------------------------------
+
+HELP_SSH = "ssh root@%s"
+RETRY_WORDS = {2: "2 tries left", 1: "1 try left"}
+
+
+class Quit(Exception):
+    """The person chose to stop (Q, or closing the input)."""
+
+
+_answers = None
+
+
+def _scripted():
+    """Test hook: answers come from a file (one per line) instead of the keyboard."""
+    global _answers
+    path = os.environ.get("BE3600_ANSWERS") if TESTING else None
+    if not path:
+        return None
+    if _answers is None:
+        with open(path) as f:
+            _answers = f.read().splitlines()
+    return _answers
+
+
+def _color(code, text):
+    return "\033[%sm%s\033[0m" % (code, text) if sys.stdout.isatty() and _scripted() is None else text
+
+
+def flow_say(text=""):
+    print(("     " + text) if text else "", flush=True)
+
+
+def flow_title(text):
+    print("\n  " + _color("1", text), flush=True)
+
+
+def flow_step(n, total, text):
+    print("\n  " + _color("36", "Step %d of %d: %s" % (n, total, text)), flush=True)
+
+
+def flow_end(text, good):
+    print("\n  " + _color("32" if good else "31", text), flush=True)
+
+
+def flow_ask(prompt, secret=False):
+    """Show the prompt, read one line. Raises Quit when the input ends."""
+    sys.stdout.write("     " + prompt)
+    sys.stdout.flush()
+    scripted = _scripted()
+    if scripted is not None:
+        if not scripted:
+            print(flush=True)
+            raise Quit()
+        answer = scripted.pop(0)
+        print("" if secret else answer, flush=True)
+        return answer
+    try:
+        return getpass.getpass("") if secret else input()
+    except (EOFError, KeyboardInterrupt):
+        print(flush=True)
+        raise Quit()
+
+
+def flow_close():
+    """Double-clicked windows close by themselves on some systems; leave the result on screen."""
+    if TESTING or not sys.stdin.isatty():
+        return
+    try:
+        input("\n  Press Enter to close this window.")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+ADDRESS_PROMPT = "Press Enter to try again, or type your router's address (like 192.168.8.1), or Q to quit: "
+
+
+def flow_find(skip):
+    """Step 1: the last address that worked, this computer's gateway, then 192.168.8.1; if none
+    answers, ask. Addresses in skip (found not to be a GL-BE3600) are passed over.
+    -> the router's address. Raises Quit."""
+    look = True
+    while True:
+        if look:
+            for ip in ([Config.router] if Config.router else []) + router_candidates():   # --router first
+                if ip not in skip and ssh_open(ip):
+                    flow_say("Found your router at %s." % ip)
+                    return ip
+            flow_say("We can't find your router. Make sure this computer is on the router's Wi-Fi (or plugged into it), "
+                     "then press Enter to try again.")
+        look = False
+        answer = flow_ask(ADDRESS_PROMPT).strip()
+        if answer.lower() in ("q", "quit"):
+            raise Quit()
+        if not answer:
+            flow_say("Trying again...")
+            look = True
+            continue
+        if not valid_host(answer):
+            flow_say("That doesn't look like a router address. It should look like 192.168.8.1.")
+            continue
+        if not is_home_address(answer):
+            flow_say("%s isn't an address on a home or office network, and your password would be sent there." % answer)
+            if flow_ask("Use it anyway? [y/N] ").strip().lower() not in ("y", "yes"):
+                continue
+        if answer in skip:
+            flow_say("%s isn't a GL-BE3600 (Slate 7). Type the address of your GL-BE3600." % answer)
+            continue
+        if ssh_open(answer):
+            flow_say("Found your router at %s." % answer)
+            return answer
+        flow_say("Nothing answered at %s. Check the address, and that this computer is on the router's Wi-Fi." % answer)
+
+
+def try_login(ip):
+    """-> 'ok', 'denied' (wrong password or key) or 'unreachable'."""
+    code, out = run_ssh(ip, "echo studio-ok")
+    if code == 0 and "studio-ok" in out:
+        return "ok"
+    return "denied" if (login_failed(out) or code != 255) else "unreachable"
+
+
+def flow_login(ip):
+    """Step 2: the saved login, or the password (3 tries). -> 'ok', 'failed' or 'unreachable'.
+    Config.password is set afterwards only if the password was what got in."""
+    Config.password = None
+    Config.key = Config.key_pass = None
+    Config.stale_key = False
+    if os.path.exists(KEY_FILE):
+        Config.key, Config.key_pass = KEY_FILE, vault_load()
+        result = try_login(ip)
+        if result == "ok":
+            flow_say("Using the login saved on this computer.")
+            return "ok"
+        Config.key = Config.key_pass = None
+        if result == "unreachable":
+            return "unreachable"
+        Config.stale_key = True
+        flow_say("The saved login doesn't work any more (maybe the router was reset). Please type the password instead.")
+    if not Config.askpass:
+        Config.askpass = make_askpass()
+    flow_say("Type your router's admin password (the one for its admin web page) and press Enter.")
+    flow_say("Nothing will show while you type - that's normal.")
+    tries = 3
+    while tries:
+        pw = flow_ask("Password: ", secret=True)
+        if not pw:
+            flow_say("Nothing was typed. Type the password, then press Enter.")
+            continue
+        Config.password = pw
+        result = try_login(ip)
+        if result == "ok":
+            flow_say("Logged in.")
+            return "ok"
+        Config.password = None
+        if result == "unreachable":
+            return "unreachable"
+        tries -= 1
+        if tries:
+            flow_say("That password didn't work. Please try again (%s)." % RETRY_WORDS[tries])
+    return "failed"
+
+
+def flow_save_login(ip):
+    """After a password login: keep a key (never the password) so it is not asked again."""
+    if vault_kind() is None:
+        flow_say("This computer has no safe place to keep a login, so you'll type the password next time.")
+        return
+    print(flush=True)
+    answer = flow_ask("Save this login so you don't have to type the password next time? [Y/n] ").strip().lower()
+    if answer in ("n", "no"):
+        flow_say("OK. You'll type the password next time.")
+        return
+    problem = create_remembered_key(ip)
+    if problem is None:
+        flow_say("Saved. Next time you won't need to type the password.")
+    else:
+        flow_say("The login couldn't be saved this time (%s). That's fine - you'll type the password next time." % problem)
+
+
+# No double quotes: on Windows this travels inside one quoted cmd.exe argument.
+BE3600_CHECK = ('S=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null); '
+                '[ -x /etc/init.d/gl_screen ] && [ x$S = x76,284 ] && echo be3600-yes; '
+                'command -v be3600-uninstall >/dev/null 2>&1 && echo be3600-installed; true')
+
+
+def router_facts(ip):
+    """-> (is a GL-BE3600, has the screen saver), or None if the router stopped answering."""
+    code, out = run_ssh(ip, BE3600_CHECK)
+    if code != 0:
+        return None
+    return "be3600-yes" in out, "be3600-installed" in out
+
+
+def not_be3600(ip):
+    flow_say("The device at %s isn't a GL-BE3600 (Slate 7) - it may be your internet provider's modem. "
+             "Nothing was changed on it." % ip)
+
+
+def flow_connect(offer_save, total):
+    """Steps 1 and 2, until the address is a GL-BE3600 we are logged in to; then, after a
+    password login, the offer to save it (only ever to a GL-BE3600). -> (ip, has the screen saver)."""
+    skip = set()
+    while True:
+        flow_step(1, total, "Finding your router")
+        ip = flow_find(skip)
+        flow_step(2, total, "Logging in to your router")
+        result = flow_login(ip)
+        if result == "failed":
+            raise FlowFailed("That password didn't work 3 times. Check it's the password for the router's admin web "
+                             "page, then run this again.")
+        facts = router_facts(ip) if result == "ok" else None
+        if facts is None:
+            raise FlowFailed("Your router stopped answering. Check this computer is still on its Wi-Fi, then run this again.")
+        if not facts[0]:
+            not_be3600(ip)
+            skip.add(ip)
+            Config.password = None
+            Config.key = Config.key_pass = None
+            continue
+        if offer_save and Config.password is not None:
+            flow_save_login(ip)
+        return ip, facts[1]
+
+
+class FlowFailed(Exception):
+    """Something went wrong: the message says what, and what to try."""
+
+
+def run_install():
+    flow_title("GL.iNet Router Screen Saver - Install")
+    flow_say("This puts the animated screen saver on your GL.iNet GL-BE3600 (Slate 7).")
+    code = 1
+    try:
+        ip, _ = flow_connect(offer_save=True, total=3)
+        flow_step(3, 3, "Installing the screen saver")
+        flow_say("This takes about a minute. Please keep this window open.")
+        path, version = get_payload()
+        if path is None:
+            raise FlowFailed("This file is missing the screen saver's files. Download it again, then run it.")
+        try:
+            remote = ("D=$(mktemp -d /tmp/be3600-setup.XXXXXX) && cd $D && gunzip -c | tar xf - && "
+                      "BE3600_VERSION=%s sh setup/router-install.sh; R=$?; cd /; rm -rf $D; exit $R" % version)
+            rc, out = run_ssh(ip, remote, stdin_path=path)
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        if rc == 3:                                  # the router's own check (the one above should catch it first)
+            raise FlowFailed("The device at %s isn't a GL-BE3600 (Slate 7), so nothing was installed. "
+                             "Run this again and type your GL-BE3600's address." % ip)
+        if rc != 0:
+            why = last_line(out).replace("ERROR:", "").strip() or "no reason given"
+            raise FlowFailed("The install didn\'t finish on the router: %s. Run this again; if it keeps failing, "
+                             "restart the router and try once more." % why.rstrip("."))
+        flow_say("Installed.")
+        remember_router(ip)
+        flow_end("All done! Your router's screen will show the animation after a few idle seconds.", True)
+        code = 0
+    except Quit:
+        flow_end("Nothing was changed. Run this again when this computer is on the router's Wi-Fi.", False)
+    except FlowFailed as e:
+        flow_end(str(e), False)
+    flow_close()
+    return code
+
+
+def forget_this_computer():
+    """The saved router address, the saved login's key files and its keychain entry."""
+    vault_clear()
+    for p in (KEY_FILE, KEY_FILE + ".pub", STATE_FILE):
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+    try:
+        os.rmdir(os.path.dirname(STATE_FILE))
+    except OSError:
+        pass
+
+
+def run_uninstall():
+    flow_title("GL.iNet Router Screen Saver - Uninstall")
+    flow_say("This removes the screen saver and puts your router's normal screen back.")
+    code = 1
+    ip = None
+    try:
+        ip, installed = flow_connect(offer_save=False, total=3)
+        flow_step(3, 3, "Removing the screen saver")
+        if installed:
+            rc, out = run_ssh(ip, "/usr/sbin/be3600-uninstall --purge --forget-keys")
+            if rc != 0:
+                why = last_line(out).replace("ERROR:", "").strip() or "no reason given"
+                raise FlowFailed("The router couldn\'t remove it: %s. Run this again, or remove it on the router itself: "
+                                 "connect with %s, then type be3600-uninstall --purge" % (why.rstrip("."), HELP_SSH % ip))
+            flow_say("Removed it from the router. GL.iNet's normal screen is back.")
+        else:
+            run_ssh(ip, "sed -i '/ be3600-studio-link-[A-Za-z0-9_-]*$/d' %s 2>/dev/null; true" % AUTH_KEYS)
+            flow_say("The screen saver wasn't on this router, so there was nothing to remove there.")
+        forget_this_computer()
+        flow_say("Removed the saved login and router address from this computer.")
+        flow_end("Your router is back to normal. You can delete this file.", True)
+        code = 0
+    except Quit:
+        flow_end("We couldn't reach your router, so nothing was changed.", False)
+        flow_say("To remove it on the router itself: connect with %s, log in with the router's admin password,"
+                 % (HELP_SSH % (ip or "192.168.8.1")))
+        flow_say("then type: be3600-uninstall --purge")
+    except FlowFailed as e:
+        flow_end(str(e), False)
+    flow_close()
+    return code
 
 
 def use_local_studio(choice, platform=None):
@@ -1127,12 +1502,18 @@ def main():
                     help="which Motion Studio to open: the copy served by Studio Link on this computer (local), "
                          "or the website (web). auto = local on a Mac, where Safari cannot reach Studio Link "
                          "from the website; web elsewhere")
+    ap.add_argument("--install", action="store_true", help="put the screen saver on your router, step by step")
+    ap.add_argument("--uninstall", action="store_true", help="take it off your router and this computer, step by step")
     a = ap.parse_args()
     if a.router and not valid_host(a.router):
         sys.exit("--router must be an address like 192.168.8.1 (letters, digits, dots and dashes only).")
     Config.router, Config.key, Config.dry_run = a.router, a.key, a.dry_run
     Config.token = secrets.token_urlsafe(24)
     Config.port = a.port
+    if a.install or ACTION == "install":
+        sys.exit(run_install())
+    if a.uninstall or ACTION == "uninstall":
+        sys.exit(run_uninstall())
     Config.local_studio = use_local_studio(a.studio)
 
     print("\n  GL.iNet Router Screen Saver (BE3600) - Studio Link\n", flush=True)

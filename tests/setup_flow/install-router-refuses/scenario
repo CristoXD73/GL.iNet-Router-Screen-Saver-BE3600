@@ -1,0 +1,9 @@
+# The router cannot finish the install: one plain sentence with the reason, and what to try.
+runs: install
+routers: 192.168.8.1=be3600
+reachable: 192.168.8.1
+gateway: 192.168.8.1
+password: hunter2
+install_rc: 192.168.8.1=1
+install_out: [1/4] Checking this router\n  ERROR: no lua interpreter found (try: opkg install lua)
+exit.1: 1

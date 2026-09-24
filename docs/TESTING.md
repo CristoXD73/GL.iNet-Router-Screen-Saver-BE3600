@@ -46,6 +46,24 @@ What is different on a Mac, and how the suite handles it:
 Pillow (`pillow`) is needed for the screen-page tests; `node` is only needed for Motion
 Studio's GIF decoder check, which is skipped without it.
 
+## Install and Uninstall: the same words on every system
+
+`tests/setup_flow/` holds the Install and Uninstall conversations word for word: one folder per
+situation (router found or not, wrong device, wrong password, saved login, router reset, ...),
+with what the person types (`answers.N`) and exactly what they must see (`expected.N`). A fake
+router, `tests/fake_router.py`, stands in for ssh.
+
+```
+python3 tests/setup_flow_test.py                               # tools/studio_link.py (macOS, Linux)
+python3 tests/setup_flow_test.py --downloads studio/downloads  # the built one-click files
+powershell -File tests\windows_setup_flow_test.ps1             # tools\studio-link.ps1 (Windows)
+powershell -File tests\windows_setup_flow_test.ps1 -Downloads  # Install-/Uninstall-Screen-Saver.cmd
+```
+
+`tests/run.sh` runs the first two. Change a message in one implementation and the other fails
+until it says the same; `python3 tests/setup_flow_test.py --update` rewrites `expected.N` from
+the Python side once you mean the change.
+
 ## Windows
 
 The PowerShell checks in `tests/windows_*.ps1` run in CI on `windows-latest`. See the

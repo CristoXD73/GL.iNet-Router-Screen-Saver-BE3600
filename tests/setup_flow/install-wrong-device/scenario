@@ -1,0 +1,10 @@
+# The gateway is the internet provider's modem (it answers on SSH, and takes a password): it is
+# recognised as not a GL-BE3600 and nothing is changed on it. Then the right address.
+runs: install
+routers: 192.168.1.1=isp-modem 192.168.8.1=be3600
+reachable: 192.168.1.1 192.168.8.1
+gateway: 192.168.1.1
+password: hunter2
+exit.1: 0
+check: not-installed 192.168.1.1
+check: installed 192.168.8.1

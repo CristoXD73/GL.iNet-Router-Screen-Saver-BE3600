@@ -98,6 +98,16 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File tests/windows_pages_test.ps1
           if ($LASTEXITCODE) { exit 1 }
 
+      # The Install / Uninstall conversations, word for word the same as on macOS and Linux:
+      # tools/studio-link.ps1, then the built Install-Screen-Saver.cmd / Uninstall-Screen-Saver.cmd.
+      - name: Install and Uninstall say exactly the same as on macOS and Linux
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests/windows_setup_flow_test.ps1
+          if ($LASTEXITCODE) { exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests/windows_setup_flow_test.ps1 -Downloads
+          if ($LASTEXITCODE) { exit 1 }
+
       - name: The single-file Studio-Link.cmd works
         shell: powershell
         run: |

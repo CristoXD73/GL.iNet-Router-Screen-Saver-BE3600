@@ -3,42 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- One page, one job: hand you the file. It loads nothing from anywhere else. -->
+<!-- One page, one job: hand you the one right file. It loads nothing from anywhere else. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Get Studio Link - GL.iNet BE3600 router screen saver</title>
-<meta name="description" content="One file sets up the animated screen saver on a GL.iNet GL-BE3600 (Slate 7), then opens Motion Studio already connected to the router. Windows, macOS and Linux.">
+<title>Install or uninstall - GL.iNet BE3600 router screen saver</title>
+<meta name="description" content="Put the animated screen saver on a GL.iNet GL-BE3600 (Slate 7) router, or take it off again: one file for Windows, macOS or Linux, and a few plain steps.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Get Studio Link - GL.iNet BE3600 router screen saver">
-<meta property="og:description" content="One file sets up the screen saver on your BE3600 and opens Motion Studio, connected.">
+<meta property="og:title" content="Install or uninstall - GL.iNet BE3600 router screen saver">
+<meta property="og:description" content="One file puts the animated screen saver on your GL-BE3600, and one takes it off again.">
 <meta property="og:url" content="https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/studio/get.html">
 <meta property="og:image" content="https://cristoxd73.github.io/GL.iNet-Router-Screen-Saver-BE3600/docs/assets/social.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="shared.css">
 <style>
 html,body{margin:0;min-height:100%}
-body{display:grid;place-items:center;padding:20px}
-.card{width:min(640px,100%);border-radius:26px;padding:26px 26px 22px}
+body{display:grid;place-items:center;padding:20px 16px}
+.card{width:min(640px,100%);box-sizing:border-box;border-radius:26px;padding:26px 26px 22px}
 .head{display:flex;align-items:center;gap:13px;margin-bottom:20px}
 .head strong{display:block;font-size:17px;letter-spacing:-.02em}
 .head small{display:block;font-size:9px;color:var(--muted);margin-top:2px}
 h1{font-size:22px;letter-spacing:-.025em;margin:0 0 6px}
 .lede{font-size:11px;color:var(--muted);line-height:1.65;margin:0 0 18px}
-.gets{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:6px}
-.get{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:#fff;background:#111318;
-  border-radius:13px;padding:13px 17px;box-shadow:0 8px 20px rgba(17,19,24,.16)}
-.get:hover{transform:translateY(-1px)}
-.get.second{background:rgba(255,255,255,.7);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
-.get b{display:block;font-size:11px}
-.get span{display:block;font-size:8.5px;opacity:.65;margin-top:2px}
-.get svg{width:17px;height:17px;flex:none}
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.big{display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;border-radius:16px;
+  padding:18px 14px;font-size:16px;font-weight:800;letter-spacing:-.01em;
+  background:rgba(255,255,255,.75);color:var(--text);box-shadow:inset 0 0 0 1.5px rgba(18,21,29,.14)}
+.big.primary{background:#111318;color:#fff;box-shadow:0 10px 24px rgba(17,19,24,.2)}
+.big:hover{transform:translateY(-1px)}
+.big:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.big svg{width:20px;height:20px;flex:none}
+.big small{display:block;font-size:9px;font-weight:600;opacity:.6;margin-top:2px}
+.said{font-size:13px;font-weight:700;line-height:1.5;margin:16px 0 4px}
+.more{margin:0;padding:0 0 0 18px;font-size:10.5px;color:var(--muted);line-height:1.6}
+.more li{margin:3px 0}
+.more code,.adv code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;background:rgba(18,21,29,.06);
+  border-radius:5px;padding:1px 5px;color:var(--text);word-break:break-all}
+.others{font-size:10px;color:var(--muted);margin:10px 0 0}
+.others a,.foot a,.adv a{color:var(--blue)}
+.hidden{display:none!important}
 .then{list-style:none;margin:20px 0 0;padding:0;counter-reset:s}
-.then li{position:relative;padding:0 0 13px 32px;font-size:10.5px;line-height:1.6;counter-increment:s}
+.then li{position:relative;padding:0 0 12px 32px;font-size:10.5px;line-height:1.6;counter-increment:s}
 .then li::before{content:counter(s);position:absolute;left:0;top:-1px;width:21px;height:21px;border-radius:50%;
   background:#111318;color:#fff;font-size:9px;font-weight:800;display:grid;place-items:center}
 .then li b{display:block;font-size:11px;margin-bottom:1px}
 .then li small{color:var(--muted);font-size:9.5px}
-.foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:9px;color:var(--muted);line-height:1.7}
-.foot a{color:var(--blue)}
+.adv{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;font-size:10px;line-height:1.7;color:var(--muted)}
+.adv summary{cursor:pointer;font-weight:700;color:var(--text);font-size:10.5px}
+.adv h3{font-size:10.5px;color:var(--text);margin:12px 0 2px}
+.adv p{margin:2px 0}
+.nojs-list{font-size:10.5px;line-height:1.8}
+html.js .nojs-list{display:none}
+.foot{margin-top:12px;font-size:9px;color:var(--muted);line-height:1.7}
+@media (max-width:420px){.buttons{grid-template-columns:1fr}.card{padding:22px 18px 18px}}
 </style>
 </head>
 <body>
@@ -49,35 +64,72 @@ h1{font-size:22px;letter-spacing:-.025em;margin:0 0 6px}
     <div><strong>GL.iNet Router Screen Saver</strong><small>GL-BE3600 (Slate 7)</small></div>
   </div>
 
-  <h1>Start here: get Studio Link</h1>
-  <p class="lede">One file. It sets up the router, then opens Motion Studio already connected to it &mdash;
-    so this is the only thing you need to download.</p>
+  <h1>Put the screen saver on your router</h1>
+  <p class="lede">Use a computer that is on your router&rsquo;s Wi-Fi (or plugged into it). You will need the
+    router&rsquo;s admin password &mdash; the one for its admin web page.</p>
 
-  <div class="gets">
-    <a class="get" href="downloads/Studio-Link.cmd" download>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5l5 5 5-5M4 20h16"/></svg>
-      <span><b>Windows</b><span>Studio-Link.cmd</span></span>
+  <div class="buttons" id="buttons">
+    <a class="big primary" id="btnInstall" href="#install">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5l5 5 5-5M4 20h16"/></svg>
+      <span>Install</span>
     </a>
-    <a class="get second" href="downloads/studio-link.py" download>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5l5 5 5-5M4 20h16"/></svg>
-      <span><b>Mac / Linux</b><span>studio-link.py</span></span>
+    <a class="big" id="btnUninstall" href="#uninstall">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+      <span>Uninstall</span>
     </a>
   </div>
 
+  <p class="said" id="said" aria-live="polite"></p>
+  <ul class="more" id="more"></ul>
+  <p class="others" id="others"></p>
+
+  <div class="nojs-list">
+    <p><b>Install:</b> <a href="downloads/Install-Screen-Saver.cmd" download>Windows</a> &middot;
+      <a href="downloads/Install-Screen-Saver-Mac.zip" download>Mac</a> &middot;
+      <a href="downloads/install-screen-saver.py" download>Linux</a><br>
+      <b>Uninstall:</b> <a href="downloads/Uninstall-Screen-Saver.cmd" download>Windows</a> &middot;
+      <a href="downloads/Uninstall-Screen-Saver-Mac.zip" download>Mac</a> &middot;
+      <a href="downloads/uninstall-screen-saver.py" download>Linux</a></p>
+  </div>
+
   <ol class="then">
-    <li><b>Double-click it</b><small>Windows may warn about a downloaded file: choose <i>Keep</i>, then <i>Run anyway</i>. <b>Mac:</b> open Terminal, type <code>python3&nbsp;</code> (with a space), drag the downloaded file into the window and press Return. Linux: <code>python3 studio-link.py</code>.</small></li>
-    <li><b>Type the router's admin password once</b><small>Into that window, never into a web page. Press Enter to let it install the screen saver, and Enter again to remember this computer so it never asks again.</small></li>
-    <li><b>It finishes with the eyes and a rev</b><small>Two eyes wake up on the router's front screen while the cooling fan revs under them. That is how you know it worked.</small></li>
-    <li><b>Motion Studio opens, connected</b><small>Design an animation and press Compile; it goes straight onto the router. Untick the screen pages you do not want. On a Mac it opens from <code>127.0.0.1:8791</code>, served by Studio Link, because Safari will not connect this website to it.</small></li>
+    <li><b>It finds your router</b><small>The address that worked last time, then this computer&rsquo;s router, then GL.iNet&rsquo;s usual
+      192.168.8.1. If yours is somewhere else, it asks you to type the address.</small></li>
+    <li><b>You type the router&rsquo;s admin password</b><small>Into that window only, never a web page. Nothing shows while you
+      type; that&rsquo;s normal. Say yes to <i>Save this login</i> and you won&rsquo;t need it next time.</small></li>
+    <li><b>It installs, and says when it&rsquo;s done</b><small>Two eyes wake up on the router&rsquo;s screen while its fan revs.
+      After a few idle seconds the screen shows the animation. Uninstall puts GL.iNet&rsquo;s normal screen back and
+      removes everything, from the router and from this computer.</small></li>
   </ol>
 
+  <details class="adv">
+    <summary>Advanced</summary>
+    <h3>Design your own animations: Studio Link</h3>
+    <p>Studio Link installs the screen saver too, then opens <a href="./">Motion Studio</a> already connected to
+      your router, so what you design goes straight onto it.
+      <a href="downloads/Studio-Link.cmd" download>Windows</a> &middot;
+      <a href="downloads/studio-link.py" download>Mac / Linux</a> (run it with <code>python3 studio-link.py</code>).</p>
+    <h3>From the project files</h3>
+    <p>On <a href="https://github.com/CristoXD73/GL.iNet-Router-Screen-Saver-BE3600">GitHub</a>: <i>Code &rarr; Download ZIP</i>
+      (or clone it), then <code>Install.cmd</code> (Windows), <code>Install.command</code> (Mac) or <code>./install.sh</code>.
+      The Install and Uninstall files above are the same as
+      <code>python3 tools/studio_link.py --install</code> / <code>--uninstall</code>, or
+      <code>tools\studio-link.ps1 -Install</code> / <code>-Uninstall</code> on Windows.</p>
+    <h3>Uninstall on the router itself</h3>
+    <p>Connect with <code>ssh root@192.168.8.1</code> (your router&rsquo;s address, and its admin password), then type
+      <code>be3600-uninstall --purge</code>.</p>
+    <h3>Check a download</h3>
+    <p>Every file is listed with its checksum in <a href="downloads/SHA256SUMS">SHA256SUMS</a>; how it all works is in the
+      <a href="https://github.com/CristoXD73/GL.iNet-Router-Screen-Saver-BE3600#readme">README</a>.</p>
+  </details>
+
   <p class="foot">
-    Studio Link listens on this computer only, and your password never touches a web page &mdash;
-    <a href="https://github.com/CristoXD73/GL.iNet-Router-Screen-Saver-BE3600#what-is-studio-link-and-is-it-safe">how it works</a>,
-    <a href="downloads/SHA256SUMS">checksums</a>.<br>
-    Just want a look first? <a href="./">Open Motion Studio</a> or <a href="fan.html">Fan Studio</a> &mdash; both work without it.
+    Your password is typed into the program&rsquo;s own window, never into a web page, and is never saved; a saved login
+    is a key locked by your computer&rsquo;s keychain. Just want a look first? <a href="./">Open Motion Studio</a> or
+    <a href="fan.html">Fan Studio</a>.
   </p>
 </div>
 
+<script src="get.js"></script>
 </body>
 </html>

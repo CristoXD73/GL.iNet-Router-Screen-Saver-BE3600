@@ -1,0 +1,6 @@
+# The router cannot be reached: it says how to remove it on the router itself.
+runs: uninstall
+routers:
+reachable:
+gateway: 192.168.8.1
+exit.1: 1
