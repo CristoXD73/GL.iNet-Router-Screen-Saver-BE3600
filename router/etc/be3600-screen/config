@@ -53,7 +53,10 @@ TOUCH_DEVICE=""
 #   chimes      the fan chimes: tap to hear the next one
 #   custom      your scripts in /etc/be3600-screen/widgets.d, or custom:NAME
 #
-PAGES="animations"
+# Every page that works without setting anything up is on out of the box. Two are left for you to
+# add: wifiqr (it shows a Wi-Fi password to anyone who looks at the router) and weather (it needs
+# WEATHER_LAT / WEATHER_LON first). Pick your own in Motion Studio, or: be3600-anim pages set "..."
+PAGES="animations clock analog aurora netspeed talkers vitals info clients internet doctor usage vpn health pomodoro stopwatch message guest slots chimes custom"
 
 # Advance to the next page after this many seconds without a touch. 0 = never.
 AUTOPLAY_SECONDS=0

@@ -21,7 +21,7 @@ jobs:
 
       - name: ShellCheck
         run: >
-          shellcheck -x install.sh set-animation.sh studio-link.sh setup/*.sh native/build.sh
+          shellcheck -x install.sh set-animation.sh studio-link.sh ./*.command setup/*.sh native/build.sh
           native/build-reproducible.sh native/reproducible-inner.sh tests/run.sh
           router/usr/bin/be3600-screensaver router/usr/bin/be3600-widgetd router/usr/sbin/be3600-anim router/usr/sbin/be3600-widget-action
           router/usr/sbin/be3600-fan router/usr/lib/be3600/common.sh router/etc/init.d/be3600-screensaver
@@ -76,6 +76,12 @@ jobs:
         shell: powershell
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File tests/windows_keys_test.ps1
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Studio Link's screen-page list (Motion Studio's widget selector)
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests/windows_pages_test.ps1
           if ($LASTEXITCODE) { exit 1 }
 
       - name: The single-file Studio-Link.cmd works

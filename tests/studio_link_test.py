@@ -159,6 +159,49 @@ s, h, d = req("OPTIONS", "/send", headers={"Origin": ORIGIN, "Access-Control-Req
 check(s == 204 and "X-Studio-Token" in h.get("access-control-allow-headers", ""), "the browser's preflight allows the token header")
 check(sl.token_ok(TOKEN) and not sl.token_ok("") and not sl.token_ok(None) and not sl.token_ok(TOKEN + "x"), "the token check is exact")
 
+print("== Motion Studio served from this computer (Safari on a Mac cannot use the website) ==")
+
+
+def raw_get(path, headers=None):
+    c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=15)
+    c.request("GET", path, headers=dict(headers or {}))
+    r = c.getresponse()
+    body = r.read()
+    hdrs = {k.lower(): v for k, v in r.getheaders()}
+    c.close()
+    return r.status, hdrs, body
+
+
+with open(os.path.join(ROOT, "studio", "index.html"), "rb") as f:
+    INDEX = f.read()
+s, h, b = raw_get("/")
+check(s == 200 and b == INDEX and h.get("content-type", "").startswith("text/html"), "/ is Motion Studio, without any token")
+check(h.get("cache-control") == "no-store" and h.get("x-content-type-options") == "nosniff" and h.get("x-frame-options") == "DENY",
+      "served with no-store, nosniff and no framing")
+s, h, b = raw_get("/vendor/three.min.js")
+check(s == 200 and h.get("content-type", "").startswith("text/javascript") and len(b) > 100000, "its scripts are served")
+check(raw_get("/fan.html")[0] == 200 and raw_get("/shared.css")[0] == 200 and raw_get("/shared.js")[0] == 200,
+      "and Fan Studio with the shared files")
+for bad in ("/../tools/studio_link.py", "/%2e%2e/README.md", "/get.html", "/downloads", "/vendor/", "/vendor/../index.html",
+            "/tools/studio_link.py", "//etc/passwd", "/index.html/", "/studio-key"):
+    check(raw_get(bad)[0] in (302, 404) and b"def " not in raw_get(bad)[2], "nothing outside it: %s" % bad)
+s, h, b = raw_get("/downloads/studio-link.py")
+check(s == 302 and h.get("location") == sl.DEFAULT_STUDIO_URL + "downloads/studio-link.py", "its download links go to the website")
+check(raw_get("/", {"Host": "evil.example"})[0] == 403, "a wrong Host header is refused here too (DNS tricks)")
+check(raw_get("/", {"Origin": "https://evil.example"})[0] == 403, "and another website cannot fetch it")
+check(sl.use_local_studio("auto", "darwin") and not sl.use_local_studio("auto", "linux")
+      and sl.use_local_studio("local", "linux") and not sl.use_local_studio("web", "darwin"),
+      "a Mac opens the copy served here; elsewhere the website, unless told otherwise")
+sl.Config.local_studio, sl.Config.port = True, 8791
+check(sl.studio_url() == "http://127.0.0.1:8791/", "the address it opens on a Mac is http://127.0.0.1:8791/")
+sl.Config.local_studio = False
+check(sl.studio_url() == sl.STUDIO_URL, "and the website otherwise")
+for page in ("index.html", "fan.html"):
+    with open(os.path.join(ROOT, "studio", page), encoding="utf-8") as f:
+        html = f.read()
+    check("connect-src 'self' http://127.0.0.1:8791" in html and "location.origin" in html,
+          "%s talks to the Studio Link that served it, and its CSP allows that" % page)
+
 print("== sending an animation ==")
 good = bea1()
 set_rc(0)
@@ -305,6 +348,41 @@ set_rc(1)
 set_out("the router already keeps 8 chimes of your own.\n")
 s, h, d = req("POST", "/chime?name=ninth", b"60:500", {"Origin": ORIGIN})
 check(s == 422 and "already keeps 8" in d["message"], "the router's own reason is passed on")
+set_rc(0)
+set_out(None)
+
+print("== choosing the screen pages (Motion Studio's widget list) ==")
+sl.Config.key = "/nonexistent-key"                 # a quiet login, so the pages can be read
+set_out("order\tanimations clock vitals\n*\tanimations\tyour saved animations\n*\tclock\tbig clock and date\n"
+        "-\twifiqr\tQR code to join a Wi-Fi network\n*\tvitals\tCPU, memory\n")
+forget_calls()
+s, h, d = req("GET", "/pages", headers={"Origin": ORIGIN})
+check(s == 200 and d["ok"] and d["order"] == ["animations", "clock", "vitals"] and
+      [p["name"] for p in d["pages"]] == ["animations", "clock", "wifiqr", "vitals"] and
+      [p["on"] for p in d["pages"]] == [True, True, False, True] and ssh_args()[-1] == "be3600-anim pages --plain",
+      "the router's pages are listed, on and off, in order")
+check(req("GET", "/pages", headers={"Origin": ORIGIN}, token=False)[0] == 401, "not without the token")
+s, h, d = req("GET", "/ping", headers={"Origin": ORIGIN})
+check(d.get("pages") is True, "a paired page is told this Studio Link can choose pages")
+set_rc(1)
+set_out("usage: be3600-anim pages [list | set ...]\n")
+s, h, d = req("GET", "/pages", headers={"Origin": ORIGIN})
+check(s == 502 and "too old" in d["message"], "a router with an older screen saver is told to update")
+set_rc(0)
+set_out("pages: animations clock\n")
+forget_calls()
+s, h, d = req("POST", "/pages", b"animations  clock\n", {"Origin": ORIGIN})
+check(s == 200 and d["ok"] and ssh_args()[-1] == "be3600-anim pages set 'animations clock'", "a choice of pages is saved on the router")
+forget_calls()
+for body in (b"", b"clock; reboot", b"$(id)", b"clock 'x", b"a" * 41, b"x " * 60):
+    s, h, d = req("POST", "/pages", body, {"Origin": ORIGIN})
+    check(s == 400, "pages %r are refused" % body[:20])
+check(ssh_args() is None, "and none of them reached ssh")
+check(req("POST", "/pages", b"clock", {"Origin": "https://evil.example"})[0] == 403, "another website cannot change them")
+set_rc(1)
+set_out("unknown page 'nope'. Run: be3600-anim pages\n")
+s, h, d = req("POST", "/pages", b"nope", {"Origin": ORIGIN})
+check(s == 422 and "unknown page" in d["message"], "the router's own reason is passed on")
 set_rc(0)
 set_out(None)
 sl.Config.key = None
@@ -502,6 +580,30 @@ else:
     check(sl.Config.key is None and sl.Config.password == "hunter2" and not os.path.exists(sl.KEY_FILE) and not VAULT,
           "if the key does not work it cleans up everything (key, passphrase) and keeps the password")
 
+    # A remembered key that stopped working (a reset router, or on a Mac a key whose keychain
+    # entry was filed under an older network name) is replaced after the password works,
+    # instead of blocking "Remember this computer" for good.
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "old-phrase", "-C", "be3600-studio-link-Old-Name",
+                    "-f", sl.KEY_FILE], check=True, capture_output=True)
+    VAULT.clear()
+    sl.KEY_COMMENT = sl.key_comment()
+    check(sl.KEY_COMMENT == "be3600-studio-link-Old-Name", "the key's label is read back from the key itself")
+    sl.Config.key, sl.Config.key_pass, sl.Config.password = None, None, "hunter2"
+    set_out("Permission denied\n")
+    sl.log_in()                                                  # the old key fails; there is no terminal
+    check(sl.Config.stale_key is True and sl.Config.key is None, "(setup) the old key no longer gets in")
+    sl.Config.password = "hunter2"
+    set_out("studio-ok\n")
+    sl.offer_remember("10.0.0.1")
+    new_pub = open(sl.KEY_FILE + ".pub").read()
+    check(sl.Config.key == sl.KEY_FILE and "Old-Name" not in new_pub and sl.KEY_COMMENT in new_pub
+          and key_opens_with(VAULT.get("pw", "-")) and sl.Config.stale_key is False,
+          "a key that stopped working is replaced by a new one, offered again after the password")
+    for p in (sl.KEY_FILE, sl.KEY_FILE + ".pub"):
+        os.unlink(p)
+    VAULT.clear()
+    sl.KEY_COMMENT = sl.key_comment()
+
     sl.vault_kind = lambda: None                                # a computer with no keychain
     sl.Config.key, sl.Config.password = None, "hunter2"
     set_out("studio-ok\n")
@@ -522,6 +624,50 @@ os.environ.pop("BE3600_ASSUME_YES", None)
 sl.run_ssh = _real_run_ssh
 sl.Config.password = None
 set_out(None)
+
+print("== on a Mac ==")
+BIN = os.path.join(WORK, "macbin")
+os.makedirs(BIN, exist_ok=True)
+with open(os.path.join(BIN, "scutil"), "w") as f:
+    f.write('#!/bin/sh\n[ "$2" = LocalHostName ] && echo "Jos\\xc3\\xa9s MacBook Pro" && exit 0\nexit 1\n')
+os.chmod(os.path.join(BIN, "scutil"), 0o755)
+old_path = os.environ["PATH"]
+os.environ["PATH"] = BIN + os.pathsep + old_path
+name = sl.fresh_key_comment("darwin")
+os.environ["PATH"] = old_path
+check(name.startswith("be3600-studio-link-Jos") and sl.KEY_COMMENT_SHAPE.match(name),
+      "a Mac's key is labelled with its Sharing name (scutil), which does not change from network to network")
+check(sl.KEY_COMMENT_SHAPE.match(sl.fresh_key_comment("linux")) is not None, "elsewhere with its host name, made safe")
+pub = os.path.join(WORK, "evil.pub")
+with open(pub, "w") as f:
+    f.write("ssh-ed25519 AAAA be3600-studio-link-x/d;reboot\n")
+check(sl.key_comment(pub, "linux") == sl.fresh_key_comment("linux"),
+      "a label read back from a key file must still be plain (it ends up in a command on the router)")
+check("Local Network" in sl.local_network_hint("darwin") and sl.local_network_hint("linux") == "",
+      "a Mac that cannot find the router is pointed at the Local Network privacy switch")
+names = []
+for n in ("router/usr/bin/x", "router/.DS_Store", "router/._x", "setup/__pycache__/a.pyc", "animations/Thumbs.db"):
+    ti = tarfile.TarInfo(n)
+    ti.uid, ti.uname = 501, "me"
+    r = sl.packable(ti)
+    names.append(r.name if r else None)
+    if r:
+        check(r.uid == 0 and r.uname == "", "files go to the router owned by root, not by uid 501")
+check(names == ["router/usr/bin/x", None, None, None, None], "Finder's .DS_Store and ._ files never go to the router")
+said = []
+real_say, sl.say = sl.say, lambda *a: said.append(a)
+for exc in (BrokenPipeError(), ConnectionResetError(), socket.timeout()):
+    try:
+        raise exc
+    except Exception:
+        server.handle_error(None, ("127.0.0.1", 1))
+check(not said, "a page hanging up mid-request is not reported (no tracebacks in the window)")
+try:
+    raise ValueError("boom")
+except Exception:
+    server.handle_error(None, ("127.0.0.1", 1))
+check(len(said) == 1 and "boom" in str(said[0]), "anything else is reported in one line")
+sl.say = real_say
 
 print("== router addresses can never act as options or commands ==")
 check(all(sl.valid_host(h) for h in ("192.168.8.1", "router.lan", "my-router.example.com")), "ordinary addresses and names pass")

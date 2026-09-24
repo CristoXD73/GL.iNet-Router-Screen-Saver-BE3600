@@ -43,8 +43,16 @@ gateway() {
     fi
 }
 
-ssh_open() {   # is something answering on SSH at $1?
-    if command -v nc >/dev/null 2>&1; then nc -z -w 2 "$1" 22 >/dev/null 2>&1; else return 0; fi
+# Is something answering on SSH at $1? macOS's nc ignores -w while it is still connecting, so an
+# address with nothing behind it (192.168.8.1 on another network) held it for over a minute; -G
+# is its own connect timeout. Other nc's have no -G, and -w already covers the connect there.
+ssh_open() {
+    command -v nc >/dev/null 2>&1 || return 0
+    if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+        nc -z -G 2 -w 2 "$1" 22 >/dev/null 2>&1
+    else
+        nc -z -w 2 "$1" 22 >/dev/null 2>&1
+    fi
 }
 
 # A router address is a plain IP address or name: letters, digits, dots and dashes, and
@@ -126,7 +134,10 @@ while :; do
     printf '\n  %sType your router admin password when asked (nothing shows while you type).%s\n\n' "$YE" "$RS"
 
     RC=0
-    tar --format ustar -cf - router setup animations | run_ssh "root@$ROUTER" "$REMOTE" || RC=$?
+    # Finder leaves .DS_Store (and ._ files on some drives) in any folder you open; the router
+    # has no use for them. Both BSD tar (macOS) and GNU tar know --exclude.
+    tar --format ustar --exclude '.DS_Store' --exclude '._*' -cf - router setup animations |
+        run_ssh "root@$ROUTER" "$REMOTE" || RC=$?
 
     # Exit 3: the address answered, but it is not a BE3600 (e.g. your main router).
     if [ "$RC" -eq 3 ] && [ "$ATTEMPT" -lt 3 ]; then
@@ -142,8 +153,10 @@ echo
 if [ "$RC" -eq 0 ]; then
     mkdir -p "$STATE_DIR" && printf '%s\n' "$ROUTER" > "$STATE_FILE"
     printf '  %sAll set - the screensaver is installed and running.%s\n' "$GR" "$RS"
-    printf '  It starts on its own after a few idle seconds. Swipe or swipe or tap = next animation, double-tap = dismiss.\n'
-    printf '  Change the animation:  ./set-animation.sh   (then drag a .bea into the window)\n'
+    printf '  It starts on its own after a few idle seconds. Swipe or tap = next animation or page, double-tap = dismiss.\n'
+    printf '  The live pages (clock, speed, vitals, ...) are on; choose yours in Motion Studio.\n'
+    printf '  Design and send animations:  ./studio-link.sh   (opens Motion Studio, connected)\n'
+    printf '  Or send a .bea file:          ./set-animation.sh   (then drag it into the window)\n'
     printf '  Turn it off / remove:  be3600-anim off   /   be3600-uninstall   (over SSH)\n\n'
 elif [ "$RC" -eq 255 ]; then
     printf '  %sCould not connect or log in.%s Check the connection and that the password is the router admin password.\n\n' "$RD" "$RS"

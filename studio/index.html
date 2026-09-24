@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <!-- Loads only its own files, and talks only to Studio Link on this computer. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob: https://upload.wikimedia.org https://*.giphy.com; media-src blob:; connect-src http://127.0.0.1:8791 data: blob: https://api.openverse.org https://upload.wikimedia.org https://api.giphy.com https://*.giphy.com; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob: https://upload.wikimedia.org https://*.giphy.com; media-src blob:; connect-src 'self' http://127.0.0.1:8791 data: blob: https://api.openverse.org https://upload.wikimedia.org https://api.giphy.com https://*.giphy.com; base-uri 'none'; form-action 'none'">
   <title>Motion Studio - GL.iNet BE3600 router screen saver</title>
   <meta name="description" content="Design an animation for the GL.iNet GL-BE3600 (Slate 7) front screen in your browser: colour scenes, robot eyes or your own GIF, compiled to the 284x76 strip and sent straight to the router.">
   <meta property="og:type" content="website">
@@ -108,7 +108,17 @@ body.focus .topbar,body.focus .dock{opacity:0;pointer-events:none;height:0;overf
 .slot .acts button:disabled{opacity:.5;cursor:progress}
 .get-link{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
 a.soft-btn{display:inline-flex;align-items:center;text-decoration:none;color:inherit}
-@media (max-width:640px){.slots{grid-template-columns:1fr}}
+.pages-pick{margin-top:12px;padding:12px;border-radius:14px;background:rgba(255,255,255,.4);box-shadow:inset 0 0 0 1px var(--line)}
+.pages-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.pages-head small{display:block;font-size:8px;color:var(--muted)}
+.pages-head .dark-btn:disabled{opacity:.45;cursor:default}
+.pages-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.page-chip{display:flex;gap:7px;align-items:flex-start;padding:7px 8px;border-radius:10px;background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px var(--line);cursor:pointer;min-width:0}
+.page-chip input{margin:1px 0 0;flex:none}
+.page-chip b{display:block;font-size:9px}
+.page-chip small{display:block;font-size:7.5px;color:var(--muted);line-height:1.25}
+.page-chip.on{box-shadow:inset 0 0 0 2px #1fb655}
+@media (max-width:640px){.slots,.pages-grid{grid-template-columns:1fr}}
 
 @media (max-width:640px){.send-zone{grid-template-columns:1fr}.drop-square{width:100%;height:84px}}
 </style>
@@ -357,6 +367,14 @@ a.soft-btn{display:inline-flex;align-items:center;text-decoration:none;color:inh
         </div>
       </div>
       <div class="slots hidden" id="slots" aria-live="polite" aria-label="The animations on your router"></div>
+      <div class="pages-pick hidden" id="pagesPick" aria-label="The pages on your router's screen">
+        <div class="pages-head">
+          <div><div class="eyebrow">Screen pages</div>
+            <small>What you can swipe between on the router's screen. Untick the ones you do not want.</small></div>
+          <button class="dark-btn" id="pagesSave" type="button" disabled>Save pages</button>
+        </div>
+        <div class="pages-grid" id="pagesGrid"></div>
+      </div>
 
     </section>
   </main>
@@ -1826,7 +1844,9 @@ console.log(
 (function () {
   'use strict';
 
-  var LINK = 'http://127.0.0.1:8791';
+  // Served by Studio Link itself (on a Mac), it is on the same address as the page.
+  var LINK = (location.protocol === 'http:' && /^(127\.0\.0\.1|localhost)$/.test(location.hostname))
+    ? location.origin : 'http://127.0.0.1:8791';
   var $ = function (id) { return document.getElementById(id); };
   var square = $('dropSquare'), picker = $('beaPicker'), state = $('linkState'), help = $('linkHelp');
   var result = $('sendResult'), nameBox = $('sendName'), lastBtn = $('sendLast'), row = $('sendRow'), panel = $('optimizer');
@@ -1834,6 +1854,8 @@ console.log(
   if (!square || !panel) return;
 
   var linkOk = false, loggedIn = false, busy = false, last = null, libLoaded = false, libBusy = false, linkSig = '', lib = [], libMax = 3;
+  var pagesPick = $('pagesPick'), pagesGrid = $('pagesGrid'), pagesSave = $('pagesSave');
+  var pagesLoaded = false, pagesBusy = false, pagesOrder = [];
 
   // Pairing: Studio Link makes a fresh secret each time it starts and opens this page with it
   // in the address (#link=...). It is kept here, removed from the address bar, and sent with
@@ -1944,7 +1966,77 @@ console.log(
       .finally(function () { libBusy = false; });
   }
 
+  // ---- the pages on the router's screen (clock, speed, vitals, ...) -------------
+  // Every page that needs no setting up comes on with the install; untick the ones you do not
+  // want and press Save. The order the router already uses is kept; newly ticked ones go last.
+  function hidePages() { pagesLoaded = false; pagesPick.classList.add('hidden'); }
+
+  function chosenPages() {
+    var on = {};
+    Array.prototype.forEach.call(pagesGrid.querySelectorAll('input'), function (x) { if (x.checked) on[x.value] = true; });
+    var out = pagesOrder.filter(function (n) { return on[n]; });
+    Object.keys(on).forEach(function (n) { if (out.indexOf(n) < 0) out.push(n); });
+    return out;
+  }
+
+  function pagesChanged() {
+    var now = chosenPages();
+    Array.prototype.forEach.call(pagesGrid.querySelectorAll('.page-chip'), function (c) {
+      c.classList.toggle('on', c.querySelector('input').checked);
+    });
+    pagesSave.disabled = pagesBusy || !now.length || now.join(' ') === pagesOrder.join(' ');
+  }
+
+  function renderPages(order, pages) {
+    pagesOrder = order.slice();
+    pagesGrid.textContent = '';
+    pages.forEach(function (p) {
+      var chip = el('label', 'page-chip' + (p.on ? ' on' : '')), box = document.createElement('input'), txt = el('span');
+      box.type = 'checkbox'; box.value = p.name; box.checked = !!p.on;
+      box.addEventListener('change', pagesChanged);
+      txt.appendChild(el('b', '', p.name));
+      txt.appendChild(el('small', '', p.about || ''));
+      chip.appendChild(box); chip.appendChild(txt);
+      pagesGrid.appendChild(chip);
+    });
+    pagesPick.classList.remove('hidden');
+    pagesChanged();
+  }
+
+  function refreshPages() {
+    if (pagesBusy || libBusy || busy || !linkOk) return;
+    pagesBusy = true;
+    timed(LINK + '/pages', { mode: 'cors' }, 30000)
+      .then(json)
+      .then(function (j) {
+        if (j.ok) { pagesLoaded = true; renderPages(j.order || [], j.pages || []); }
+        else if (j.busy) { pagesLoaded = false; }
+        else { pagesLoaded = true; pagesPick.classList.add('hidden'); if (j.message) say('err', j.message); }
+      })
+      .catch(function () { pagesLoaded = false; })
+      .finally(function () { pagesBusy = false; if (pagesLoaded) pagesChanged(); });
+  }
+
+  pagesSave.addEventListener('click', function () {
+    var want = chosenPages();
+    if (busy || pagesBusy || !want.length) return;
+    busy = pagesBusy = true; pagesSave.disabled = true;
+    say('', 'Saving the pages...');
+    timed(LINK + '/pages', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: want.join(' '), mode: 'cors' }, 60000)
+      .then(json)
+      .then(function (j) { say(j.ok ? 'ok' : 'err', j.message || (j.ok ? 'Saved.' : 'That did not work.')); })
+      .catch(function () { say('err', 'Lost contact with Studio Link before it finished. Check its window.'); })
+      .finally(function () { busy = pagesBusy = false; pagesLoaded = false; refreshPages(); });
+  });
+
   // ---- finding Studio Link -----------------------------------------------------
+  // Safari (WebKit) blocks every request from an https page to http://127.0.0.1 as mixed content,
+  // so on the website it can never reach Studio Link. The copy Studio Link serves itself works.
+  function safariOnWebsite() {
+    var ua = navigator.userAgent || '';
+    return location.protocol === 'https:' && /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Firefox/.test(ua);
+  }
+
   function checkLink() {
     if (busy) return;
     timed(LINK + '/ping', { mode: 'cors' }, 2000)
@@ -1952,14 +2044,14 @@ console.log(
       .then(function (j) {
         if (!j || j.app !== 'be3600-studio-link') throw new Error('not Studio Link');
         if ((j.version || 0) < 3) {                       // an older Studio Link, which is no longer accepted
-          linkOk = false; loggedIn = false; libLoaded = false; slots.classList.add('hidden');
+          linkOk = false; loggedIn = false; libLoaded = false; slots.classList.add('hidden'); hidePages();
           setState('bad', 'This Studio Link is out of date',
             'Close it and download the new one below. Older versions are not accepted any more, for safety.');
           getLink.classList.remove('hidden');
           return;
         }
         if (!j.authed) {                                  // running, but this page has not been paired yet
-          linkOk = false; loggedIn = false; libLoaded = false; slots.classList.add('hidden');
+          linkOk = false; loggedIn = false; libLoaded = false; slots.classList.add('hidden'); hidePages();
           getLink.classList.add('hidden');
           setState('bad', 'Studio Link found, connecting...',
             'A new tab opens in a few seconds to pair with it. If it does not, close Studio Link and start it again.');
@@ -1967,24 +2059,34 @@ console.log(
         }
         linkOk = true; loggedIn = !!j.loggedIn;
         var sig = [j.router, j.dryRun, j.loggedIn].join('|');
-        if (sig !== linkSig) { linkSig = sig; libLoaded = false; }   // a different helper answered
+        if (sig !== linkSig) { linkSig = sig; libLoaded = false; pagesLoaded = false; }   // a different helper answered
         getLink.classList.add('hidden');
         if (j.dryRun) {
           setState('on', 'Studio Link is connected (test mode)', 'Files are checked but not sent.');
           if (!libLoaded) refreshLibrary();
+          else if (j.pages && !pagesLoaded) refreshPages();
         } else if (loggedIn) {
           setState('on', 'Connected' + (j.router ? ' to your router at ' + j.router : ''),
             'Drop a .bea file on the square and it goes to your router.');
           if (!libLoaded) refreshLibrary();
+          else if (j.pages && !pagesLoaded) refreshPages();
         } else {
           setState('on', 'Studio Link is running, but has no router password',
             'Close it and start it again, and type the password when it asks. Until then it cannot show your animations, and each send asks in its window.');
-          slots.classList.add('hidden');
+          slots.classList.add('hidden'); hidePages();
         }
       })
       .catch(function () {
         linkOk = false; loggedIn = false; libLoaded = false;
-        slots.classList.add('hidden');
+        slots.classList.add('hidden'); hidePages();
+        if (safariOnWebsite()) {
+          setState('bad', 'Safari cannot connect this website to Studio Link',
+            'Safari never lets a secure website talk to a helper on your own Mac. Start Studio Link ' +
+            '(python3 studio-link.py): it opens its own copy of Motion Studio at http://127.0.0.1:8791/, ' +
+            'which connects in Safari. Or open this page in Chrome, Edge or Firefox.');
+          getLink.classList.remove('hidden');
+          return;
+        }
         setState('bad', 'Studio Link is not running',
           'Download it below and double-click it (Mac/Linux: run it with python3). The first time it sets up your ' +
           'router (just press Enter) and asks for the router password once. Then this page connects by itself. If ' +

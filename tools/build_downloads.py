@@ -8,7 +8,8 @@
                     from tools/studio-link.ps1 and tools/lib.ps1, unpacked to a temp file
                     when it runs)
   studio-link.py    macOS/Linux: ONE file to run with python3 (tools/studio_link.py with
-                    tools/bea2.py folded in)
+                    tools/bea2.py folded in, and Motion Studio's own pages, which it serves on
+                    a Mac because Safari cannot reach it from the website)
 
 Both also carry the router's files (router/, setup/, animations/ as a .tar.gz) so that
 Studio Link can put the screen saver on a router that does not have it yet, with nothing
@@ -42,6 +43,13 @@ def read(*p):
 # The payload: what the router needs, read the same way every time
 # ---------------------------------------------------------------------------------------
 
+def junk(name):
+    """Files a computer leaves behind that are not part of the project: macOS Finder's .DS_Store
+    and ._ resource forks, Windows' Thumbs.db, editor swap files. Never packed, so building on a
+    Mac gives exactly the same downloads as anywhere else."""
+    return name in (".DS_Store", "Thumbs.db", "desktop.ini") or name.startswith("._") or name.endswith((".swp", "~"))
+
+
 def payload_files():
     """-> [(path in the tar, mode, bytes)] for router/, setup/ and animations/, in a fixed order."""
     out = []
@@ -49,8 +57,8 @@ def payload_files():
         base = os.path.join(ROOT, top)
         names = []
         for dirpath, dirs, files in os.walk(base):
-            dirs[:] = sorted(d for d in dirs if d != "__pycache__")
-            names += [os.path.join(dirpath, f) for f in sorted(files)]
+            dirs[:] = sorted(d for d in dirs if d != "__pycache__" and not junk(d))
+            names += [os.path.join(dirpath, f) for f in sorted(files) if not junk(f)]
         for path in names:
             rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
             with open(path, "rb") as f:
@@ -59,6 +67,19 @@ def payload_files():
                 data = data.replace(b"\r\n", b"\n")
             mode = 0o755 if rel.endswith((".sh", ".lua", "be3600-screensaver", "be3600-anim", "be3600-player")) else 0o644
             out.append((rel, mode, data))
+    return out
+
+
+def studio_files():
+    """-> [(path in the tar, mode, bytes)]: the Motion Studio pages Studio Link serves on a Mac
+    (the same list tools/studio_link.py serves from a clone)."""
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import studio_link
+    base = os.path.join(ROOT, "studio")
+    out = []
+    for rel in studio_link.studio_names(base):
+        with open(os.path.join(base, rel), "rb") as f:
+            out.append((rel, 0o644, f.read().replace(b"\r\n", b"\n")))
     return out
 
 
@@ -105,11 +126,14 @@ def wrap(b64, width=76):
     return "\n".join(b64[i:i + width] for i in range(0, len(b64), width))
 
 
-def existing_payload(path):
+def existing_payload(path, slot="PAYLOAD"):
     """-> (version id, base64) from a committed download, or (None, None)."""
     if not os.path.exists(path):
         return None, None
     raw = open(path, "rb").read()
+    if slot != "PAYLOAD":
+        m = re.search(r'%s = \("([0-9a-f]+)", """(.*?)"""\)' % slot, raw.decode("utf-8"), re.S)
+        return (m.group(1), "".join(m.group(2).split())) if m else (None, None)
     if path.endswith(".cmd"):
         i = raw.rfind(CMD_MARK.replace(b"\n", b"\r\n"))
         if i < 0:
@@ -120,10 +144,10 @@ def existing_payload(path):
     return (m.group(1), "".join(m.group(2).split())) if m else (None, None)
 
 
-def payload_b64(files, pid, path):
+def payload_b64(files, pid, path, slot="PAYLOAD"):
     """The compressed payload to embed: the committed one if it still holds exactly these
     files (so rebuilding never churns the file), otherwise a fresh one."""
-    have_id, have_b64 = existing_payload(path)
+    have_id, have_b64 = existing_payload(path, slot)
     if have_id == pid and have_b64:
         try:
             if files_in(gzip.decompress(base64.b64decode(have_b64))) == files:
@@ -190,7 +214,14 @@ def build_py(pid, b64):
     if slot not in py:
         sys.exit("tools/studio_link.py changed shape: expected its PAYLOAD line")
     packed = 'PAYLOAD = ("%s", """\n%s\n""")\n' % (pid, wrap(b64))
-    return py.replace(old, new).replace(slot, packed).encode("utf-8")
+    studio_slot = "STUDIO = None  # __STUDIO__\n"
+    if studio_slot not in py:
+        sys.exit("tools/studio_link.py changed shape: expected its STUDIO line")
+    sfiles = studio_files()
+    sid = files_id(sfiles)
+    sb64 = payload_b64(sfiles, sid, os.path.join(OUT, "studio-link.py"), "STUDIO")
+    studio = 'STUDIO = ("%s", """\n%s\n""")\n' % (sid, wrap(sb64))
+    return py.replace(old, new).replace(slot, packed).replace(studio_slot, studio).encode("utf-8")
 
 
 FILES = {"Studio-Link.cmd": build_cmd, "studio-link.py": build_py}

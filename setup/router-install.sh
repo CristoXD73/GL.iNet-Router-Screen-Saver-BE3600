@@ -92,9 +92,28 @@ cp "$HERE/router-uninstall.sh" /usr/sbin/be3600-uninstall.new
 chmod 755 /usr/sbin/be3600-uninstall.new
 mv /usr/sbin/be3600-uninstall.new /usr/sbin/be3600-uninstall
 
+# Pages nobody has chosen (the old default was animations only, or a config from before there were
+# pages) get this version's default set. A choice made with be3600-anim pages or Motion Studio is
+# marked PAGES_CHOSEN and never touched.   migrate_pages CONFIG SHIPPED_CONFIG
+migrate_pages() {
+    NEWPAGES="$(sed -n 's/^PAGES="\([^"]*\)".*/\1/p' "$2" | head -n 1)"
+    OLDPAGES="$(sed -n "s/^PAGES=[\"']\{0,1\}\([^\"'#]*\).*/\1/p" "$1" | head -n 1 | sed 's/[[:space:]]*$//')"
+    [ -n "$NEWPAGES" ] || return 0
+    grep -q '^PAGES_CHOSEN=' "$1" && return 0
+    [ -z "$OLDPAGES" ] || [ "$OLDPAGES" = "animations" ] || return 0
+    if grep -q '^PAGES=' "$1"; then
+        sed "s|^PAGES=.*|PAGES=\"$NEWPAGES\"|" "$1" > "$1.new"
+    else
+        { cat "$1"; echo "PAGES=\"$NEWPAGES\""; } > "$1.new"
+    fi
+    mv "$1.new" "$1"
+    echo "  turned on the live pages (clock, speed, vitals, ...); choose yours in Motion Studio"
+}
+
 mkdir -p /etc/be3600-screen /etc/be3600-screen/chimes.d
 if [ -f /etc/be3600-screen/config ]; then
     echo "  kept your existing settings (/etc/be3600-screen/config)"
+    migrate_pages /etc/be3600-screen/config "$SRC/etc/be3600-screen/config"
 else
     put 644 etc/be3600-screen/config
 fi
