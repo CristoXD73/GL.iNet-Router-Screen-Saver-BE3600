@@ -167,9 +167,12 @@ def main():
 
     print("== your own scripts")
     root, data, env = make_env("custom")
-    run_widgetd(env)
+    r = run_widgetd(env, BE3600_ONCE_N="6")
     c = read(data + "/custom-solar.txt") or ""
     check("title: Solar" in c and "big: 3.2 kW" in c, "a script in widgets.d is run and its output kept", c)
+    # The script's name once took over the loop's counter: BusyBox read it back as 0 and started
+    # over every 5 s (so nothing slower ever ran), dash stopped, bash never finished.
+    check(r.returncode == 0, "running your scripts does not upset the loop's count", r.stderr.strip())
 
     print("== network doctor")
     root, data, env = make_env("doctor", "PING_TARGET=1.1.1.1\n", ping_ok=True)

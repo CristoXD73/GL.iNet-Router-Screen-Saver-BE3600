@@ -402,6 +402,7 @@ It runs as root, at most five seconds each time, and only its first 2 KB is used
 | [`docs/BEA-FORMAT.md`](docs/BEA-FORMAT.md) | The animation file format (`BEA1`, `BEA2`) |
 | [`docs/TEARING.md`](docs/TEARING.md) | What was measured about tear-free drawing |
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Fixes for common problems |
+| [`docs/TESTING.md`](docs/TESTING.md) | Running the tests on Linux and macOS |
 
 ```
 Install.cmd / .command / install.sh          one-click installer (Windows / Mac / Linux)
@@ -414,7 +415,7 @@ router/                            files that end up on the router
 setup/                             install / uninstall scripts that run there
 native/                            source of the fast player + build script
 tools/                             Windows scripts, and animation helpers
-tests/                             the test suite (sh tests/run.sh)
+tests/                             the test suite (sh tests/run.sh; Linux and macOS)
 docs/                              the guides above
 ```
 
