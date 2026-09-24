@@ -168,9 +168,12 @@ the strip; it is turned into the display's layout when it is sent to the screen.
 * **The network doctor** times each stop on its own (the ISP gateway, the internet, a name lookup), so the first one
   that fails is the one to blame.
 * **The welcome** (`be3600-anim hello`, run at the end of an install) is `be3600-player --hello`: `native/hello.inc`
-  draws the logo's two eyes with a few keyframe tracks and no assets at all, so it needs no `.bea` and no config.
-  The CLI starts the `rev` chime in the background first, and both last 7.95 s, which is why the eyes widen exactly
-  when the fan stabs and blink in the cuts between them. It takes the screen the same way `preview` does, and then
+  draws the logo's two eyes with a few keyframe tracks, then shrinks them to two dots beside the KVM OCCULT logo
+  (`native/hello_logo.inc`, a coverage map) while a particle crosses it; it needs no `.bea` and no config.
+  The CLI starts the `rev` chime in the background first and the picture 150 ms later, because the fan is heard a
+  moment after it is told: that is why the eyes widen exactly when the fan stabs and blink in the cuts between them,
+  and the particle leaves the screen as the rev lets go at 7.95 s. The logo then holds until 9.6 s while the fan
+  spins down. It takes the screen the same way `preview` does, and then
   leaves `/tmp/be3600-screen.show-now` so the supervisor skips its idle countdown: the welcome runs straight into
   the screensaver rather than bouncing off the stock screen first.
 * **Why the rev sounds the way it does.** A rev cannot open with a punch. From a standstill the rotor needs half a

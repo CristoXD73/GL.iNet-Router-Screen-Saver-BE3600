@@ -1586,6 +1586,7 @@ int main(int argc, char **argv)
     }
 
     if (hello_ms) {                              /* the welcome, once, then out of the way */
+        if (testing && getenv("BE3600_HELLO_DUMP")) return hello_dump(getenv("BE3600_HELLO_DUMP"), hello_ms);
         run_hello(hello_ms);
         return 0;
     }
