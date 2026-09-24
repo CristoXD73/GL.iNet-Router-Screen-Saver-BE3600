@@ -475,7 +475,8 @@ hello_cmd() {
     /bin/usleep 300000
     echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
 
-    [ -x "$FAN" ] && "$FAN" chime rev --force >/dev/null 2>&1 &
+    # The fan is heard a moment after it is told, so it starts first (see be3600-screensaver).
+    if [ -x "$FAN" ]; then "$FAN" chime rev --force >/dev/null 2>&1 & /bin/usleep 150000; fi
     /usr/bin/be3600-player --hello >/dev/null 2>&1
     wait 2>/dev/null
 

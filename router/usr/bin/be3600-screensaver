@@ -659,7 +659,9 @@ play_hello() {
     /bin/usleep 100000
     echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
 
-    [ -x "$FAN" ] && "$FAN" chime rev >/dev/null 2>&1 &
+    # The fan is heard a moment after it is told (the rotor has to catch up), so it starts first:
+    # 150 ms later every blink and widen lands on the sound of the cut or stab it goes with.
+    if [ -x "$FAN" ]; then "$FAN" chime rev >/dev/null 2>&1 & /bin/usleep 150000; fi
     "$NATIVE" --hello >/dev/null 2>&1
     wait 2>/dev/null
 
