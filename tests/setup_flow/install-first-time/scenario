@@ -1,0 +1,9 @@
+# A new router at the factory address: one wrong password, then the right one, and Save this login.
+runs: install
+routers: 192.168.8.1=be3600
+reachable: 192.168.8.1
+gateway: 192.168.8.1
+password: hunter2
+check: installed 192.168.8.1
+check: saved-login 192.168.8.1
+check: remembered-address 192.168.8.1

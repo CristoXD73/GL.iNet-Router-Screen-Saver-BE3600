@@ -1,0 +1,10 @@
+# The router is not at the usual places (ours is at 192.168.20.1 and this computer is on another network):
+# Enter to look again, an address that is not one, then the right address. The login is not saved.
+runs: install
+routers: 192.168.20.1=be3600
+reachable: 192.168.20.1
+gateway:
+password: hunter2
+check: installed 192.168.20.1
+check: no-saved-login 192.168.20.1
+check: remembered-address 192.168.20.1

@@ -1,0 +1,8 @@
+# An address outside home and office networks is typed: it asks before a password could go there.
+runs: install
+routers: 203.0.113.9=be3600
+reachable: 203.0.113.9
+gateway:
+password: hunter2
+exit.1: 1
+check: no-password-sent-to 203.0.113.9

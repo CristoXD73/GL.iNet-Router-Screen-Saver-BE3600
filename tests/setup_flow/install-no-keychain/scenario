@@ -1,0 +1,9 @@
+# A Linux computer with no keychain (no secret-tool): the login cannot be saved safely, so it is not offered.
+runs: install
+only: python
+keychain: no
+routers: 192.168.8.1=be3600
+reachable: 192.168.8.1
+gateway: 192.168.8.1
+password: hunter2
+check: installed 192.168.8.1

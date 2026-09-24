@@ -570,6 +570,35 @@ else
     fail "Studio Link tests failed: $(grep FAIL "$TMP/studio-link.log")"
 fi
 
+echo "== Install and Uninstall: the exact words, every step (tests/setup_flow) =="
+# The same conversations tests/windows_setup_flow_test.ps1 holds Windows to, word for word.
+if python3 tests/setup_flow_test.py >"$TMP/flow.log" 2>&1; then
+    pass "tools/studio_link.py: $(grep -c '^  ok' "$TMP/flow.log") conversation and after-state checks pass"
+else
+    fail "Install / Uninstall conversations differ: $(grep -A12 FAIL "$TMP/flow.log")"
+fi
+if python3 tests/setup_flow_test.py --downloads studio/downloads >"$TMP/flow-dl.log" 2>&1; then
+    pass "the built install-screen-saver.py / uninstall-screen-saver.py say exactly the same"
+else
+    fail "the built Install / Uninstall downloads differ: $(grep -A12 FAIL "$TMP/flow-dl.log")"
+fi
+# The Mac and Linux download is a shell script and a Python program at once: a double-clicked
+# .command (or sh FILE) must hand itself to python3.
+if sh studio/downloads/uninstall-screen-saver.py --help 2>&1 | grep -q -- '--uninstall'; then
+    pass "run as a shell script (a double-clicked .command), the download hands itself to python3"
+else fail "sh uninstall-screen-saver.py did not reach Python"; fi
+if python3 - <<'PY'
+import zipfile, sys
+for z, inner, src in (("Install-Screen-Saver-Mac.zip", "Install Screen Saver.command", "install-screen-saver.py"),
+                      ("Uninstall-Screen-Saver-Mac.zip", "Uninstall Screen Saver.command", "uninstall-screen-saver.py")):
+    with zipfile.ZipFile("studio/downloads/" + z) as f:
+        (i,) = f.infolist()
+        assert i.filename == inner and i.external_attr >> 16 == 0o100755 and i.create_system == 3, z
+        assert f.read(i) == open("studio/downloads/" + src, "rb").read(), z
+PY
+then pass "the Mac zips hold the same file as a .command that is executable (so a double-click opens it)"
+else fail "the Mac zips are wrong"; fi
+
 # The single-file downloads on the Studio page are generated; they must match the sources.
 if python3 tools/build_downloads.py --check >"$TMP/downloads.log" 2>&1; then
     pass "studio/downloads are up to date with their sources"
@@ -684,6 +713,32 @@ if command -v node >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null; then
 else
     echo "  skip  needs node and Pillow (pip install pillow)"
 fi
+
+
+echo "== the uninstaller takes out everything the installer put in =="
+# Every file the installer copies, every line it adds to sysupgrade.conf and every runtime file
+# in /tmp must be named in router-uninstall.sh, so the router really is back as it was.
+MISSING=""
+for P in $(sed -n 's/^put [0-9]* \([^ ]*\).*/\/\1/p' setup/router-install.sh) \
+         $(sed -n 's/^KEEP="\(.*\)"/\1/p' setup/router-install.sh) \
+         $(grep -rhoE '/tmp/be3600[A-Za-z0-9._-]*' router setup --include='*' 2>/dev/null | grep -v 'XXXXXX' | sort -u) \
+         /usr/bin/be3600-player; do
+    case "$P" in /etc/be3600-screen/config|/etc/be3600-screen) continue ;; esac   # --purge removes the whole folder
+    grep -qF -- "$P" setup/router-uninstall.sh || grep -qxF -- "rm -rf $(dirname "$P")" setup/router-uninstall.sh ||
+        MISSING="$MISSING $P"
+done
+if [ -z "$MISSING" ]; then pass "router-uninstall.sh removes every file, service, sysupgrade.conf line and /tmp file"
+else fail "router-uninstall.sh leaves behind:$MISSING"; fi
+KEEPS="$(sed -n 's/^KEEP="\(.*\)"/\1/p' setup/router-install.sh)"
+MISSING=""
+for P in $KEEPS; do grep -qF -- "-e \"$P\"" setup/router-uninstall.sh || MISSING="$MISSING $P"; done
+if [ -z "$MISSING" ]; then pass "every sysupgrade.conf line the installer adds is taken out again"; else fail "sysupgrade.conf lines left:$MISSING"; fi
+printf 'ssh-ed25519 AAAA me@laptop\nssh-ed25519 BBBB be3600-studio-link-Jos-Mac\nssh-rsa CCCC be3600-studio-link-PC_1\nssh-ed25519 DDDD be3600-studio-link-x extra\n' > "$TMP/authkeys"
+KEYFILTER="$(sed -n "s/^ *grep -v '\( be3600-studio-link-[^']*\)'.*/\1/p" setup/router-uninstall.sh)"
+grep -v "$KEYFILTER" "$TMP/authkeys" > "$TMP/authkeys.left"
+if [ "$(cat "$TMP/authkeys.left")" = "$(printf 'ssh-ed25519 AAAA me@laptop\nssh-ed25519 DDDD be3600-studio-link-x extra')" ]; then
+    pass "--forget-keys removes only the logins this project saved; other keys stay"
+else fail "--forget-keys left: $(cat "$TMP/authkeys.left")"; fi
 
 
 echo "== line endings: nothing the router reads may contain a carriage return =="

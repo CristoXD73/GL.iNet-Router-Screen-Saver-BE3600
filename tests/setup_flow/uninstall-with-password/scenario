@@ -1,0 +1,9 @@
+# Uninstall from a computer that never saved a login: the password, once.
+runs: uninstall
+routers: 192.168.8.1=be3600
+installed: 192.168.8.1
+reachable: 192.168.8.1
+gateway: 192.168.8.1
+password: hunter2
+check: not-installed 192.168.8.1
+check: computer-clean

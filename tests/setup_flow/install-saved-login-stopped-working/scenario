@@ -1,0 +1,10 @@
+# A login was saved, then the router was reset (so it no longer knows this computer): it says so,
+# asks for the password, and offers to save the login again, replacing the old one.
+runs: install install
+routers: 192.168.8.1=be3600
+reachable: 192.168.8.1
+gateway: 192.168.8.1
+password: hunter2
+reset.1: 192.168.8.1
+check: installed 192.168.8.1
+check: saved-login 192.168.8.1

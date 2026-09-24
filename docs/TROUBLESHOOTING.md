@@ -45,7 +45,52 @@ If you need the recent log:
 logread | grep be3600-screen | grep -v daemon.info | tail -n 20
 ```
 
-## The installer
+## Install and Uninstall (the two buttons on the download page)
+
+The messages below are the exact ones the Install and Uninstall files show, on every system.
+
+### "We can't find your router"
+
+This computer isn't on the router's network, or the router isn't at the usual addresses (the one
+that worked last time, this computer's router, and `192.168.8.1`). Join the router's Wi-Fi or plug
+into it and press Enter, or type its address (for example `192.168.20.1`; it is on the sticker
+and in the router's admin page). Q stops without changing anything.
+
+### "... isn't a GL-BE3600 (Slate 7) - it may be your internet provider's modem"
+
+The address answered, but it is a different device, often the box from your internet provider.
+Nothing was changed on it and no login was saved there. It looks again, skipping that device, or
+asks you to type your GL-BE3600's address.
+
+### "That password didn't work"
+
+It is the router's **admin** password, the one for its admin web page, not the Wi-Fi password.
+Nothing shows while you type it. After three wrong tries it stops; run it again.
+
+### "The saved login doesn't work any more"
+
+The router was probably reset, so it no longer knows this computer. Type the password once and
+say yes to *Save this login* again; the old saved login is replaced.
+
+### The Mac says it can't check the file, or won't open it
+
+macOS blocks files from the internet that are not from the App Store or a registered developer.
+Open *System Settings → Privacy & Security*, scroll down to the message about the file, click
+*Open Anyway*, and confirm. Or skip the file: in Terminal,
+`python3 ~/Downloads/install-screen-saver.py` does the same (download the Linux file for that).
+
+### Windows says it protected your PC
+
+Click *More info*, then *Run anyway*. The file is plain text you can read in Notepad first, and
+its checksum is in [`studio/downloads/SHA256SUMS`](../studio/downloads/SHA256SUMS).
+
+### "We couldn't reach your router, so nothing was changed" (Uninstall)
+
+Uninstall on the router itself: connect with `ssh root@192.168.8.1` (your router's address, and
+its admin password), then type `be3600-uninstall --purge`. The saved login on this computer is
+kept until an Uninstall reaches the router, so you can simply run Uninstall again later.
+
+## The installer from the ZIP (Install.cmd, install.sh)
 
 ### Windows says the script is blocked or from an untrusted source
 
