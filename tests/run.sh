@@ -721,7 +721,7 @@ echo "== the uninstaller takes out everything the installer put in =="
 MISSING=""
 for P in $(sed -n 's/^put [0-9]* \([^ ]*\).*/\/\1/p' setup/router-install.sh) \
          $(sed -n 's/^KEEP="\(.*\)"/\1/p' setup/router-install.sh) \
-         $(grep -rhoE '/tmp/be3600[A-Za-z0-9._-]*' router setup --include='*' 2>/dev/null | grep -v 'XXXXXX' | sort -u) \
+         $(grep -rIhoE '/tmp/be3600[A-Za-z0-9._-]*' router setup 2>/dev/null | grep -v 'XXXXXX' | sort -u) \
          /usr/bin/be3600-player; do
     case "$P" in /etc/be3600-screen/config|/etc/be3600-screen) continue ;; esac   # --purge removes the whole folder
     grep -qF -- "$P" setup/router-uninstall.sh || grep -qxF -- "rm -rf $(dirname "$P")" setup/router-uninstall.sh ||

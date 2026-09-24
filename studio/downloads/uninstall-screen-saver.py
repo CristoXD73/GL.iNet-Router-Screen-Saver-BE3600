@@ -826,12 +826,15 @@ def is_home_address(ip):
 # file elsewhere gets an attacker nothing.
 
 def _test_vault():
-    """Test hook: a keychain in a folder, so the Save-this-login steps can be tested anywhere."""
+    """Test hook: a keychain in a folder, so the Save-this-login steps can be tested anywhere
+    (and never touch the real one). "none": this computer has no keychain at all."""
     d = os.environ.get("BE3600_VAULT_DIR") if TESTING else None
-    return os.path.join(d, "%s--%s" % (VAULT_SERVICE, KEY_COMMENT)) if d else None
+    return os.path.join(d, "%s--%s" % (VAULT_SERVICE, KEY_COMMENT)) if d and d != "none" else None
 
 
 def vault_kind():
+    if TESTING and os.environ.get("BE3600_VAULT_DIR") == "none":
+        return None
     if _test_vault():
         return "test"
     if sys.platform == "darwin" and shutil.which("security"):

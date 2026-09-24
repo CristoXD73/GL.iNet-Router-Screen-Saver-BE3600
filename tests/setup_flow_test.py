@@ -105,6 +105,8 @@ def run_program(program, action, conf, work, routers, fake, answers):
         "HOME": os.path.join(work, "home"),
         "PYTHONDONTWRITEBYTECODE": "1",
     })
+    # Always a test keychain (or none at all): never the real macOS Keychain or libsecret.
+    env["BE3600_VAULT_DIR"] = "none"
     if one(conf, "keychain") != "no":
         env["BE3600_VAULT_DIR"] = os.path.join(work, "vault")
         os.makedirs(env["BE3600_VAULT_DIR"], exist_ok=True)
